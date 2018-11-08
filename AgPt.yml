@@ -1,0 +1,93 @@
+title: 'AgPd Alloy Database'
+# Ordered list of species; this is the same order as should be in the
+# POTCAR file for VASP calculations.
+species:
+  - 'Pt'
+  - 'Ag'
+# Directory in which the database folder system will be created.
+root: '~/codes/aBuild/'
+# These are global settings for INCAR, POTCAR, and KPOINTS that will
+# be applied to *all* the VASP calculations in all databases. They can
+# be overridden in each database.
+calculator:
+  name: 'vasp'
+  incar:
+    prec: 'a'
+    #  encut: 400
+    #  isym: 0
+    lwave: False
+    lreal: 'auto'
+
+    #  ediff: 0.00001
+    ismear: 1
+    sigma: 0.1
+  # If the POTCAR names are non-standard, include the them in the
+  # setups dict with the correct suffix after the element name
+  # here. You must supply the versions for the potentials.
+
+  potcars:
+    directory: '/fslhome/glh43/src/vasp/potpaw_PBE'
+    xc: 'PBE'
+    versions:
+      Ag: '02Apr2005'
+      Pt: '04Feb2005'
+    setups:
+      Ag: ''
+      Pt: ''
+  kpoints: 
+    method : 'mueller'
+    mindistance: 40  # Bigger numbers mean denser meshes
+# Parameters for the job arrays that will be submitted for each
+# database. These can be overridden in each database below as well.
+execution:
+  template: 'run_array_ml.sh'
+  time: 10
+  ntasks: 1
+  nodes: 1
+  mem_per_cpu: 8G
+  job_name: 'AgPt DB'
+#  partition: 'physics'
+  array_limit: 150
+  exec_path: 'vasp6.x'
+#  options:
+#    - "--qos=msg"
+#    - "-C knl"
+# Next, we include a list of all the databases we want to create. A
+# database following this pattern is created *for each* of the seed
+# configurations listed above.
+database:
+  #The PhononBase class generates the dynamical matrix that is needed
+  #by PhononDatabase.
+  name: 'enumerated'  # I get to choose the name
+  lattice:
+    - "fcc"
+    - "hcp"
+#  concs: [ [], [[0,1,2] , [0,1,4]] ]
+  nconfigs: [5,5]  # One number per lattice defined in the lattice variable
+#  siteRestrictions: [['0/1'],['0/1','0/1']]
+  sizes: [[1,16],[1,11]]
+#        ran_seed: 10
+fitting: 
+  dbs: ['*'] 
+  execution:
+    template: 'run_mtp_ml.sh'
+    time: 10
+    ntasks: 1
+    nodes: 1
+    mem_per_cpu: 500MB
+    job_name: 'AgPt-fitting'
+#  options:
+#    - "--qos=msg"
+#    - "-C knl"
+    modules: ['mpi/openmpi-1.8.5_intel-15.0.2','compiler_intel/2017']
+#   
+  fits:
+    - name: "AgPt"
+      dbs: ["*"]
+      steps:
+        - type: "mtp.MTP"
+          selection-limit: 200
+          split: "A"
+          species:
+            - "Ag"
+            - "Pt"

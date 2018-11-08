@@ -1,0 +1,22 @@
+Metadata-Version: 1.1
+Name: aBuild
+Version: 1.0
+Summary: Automator for f.p. calcs and fitting.
+Home-page: https://github.com/rosenbrockc/matdb
+Author: Lance J Nelson
+Author-email: lancejnelson@gmail.com
+License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Topic :: Scientific/Engineering

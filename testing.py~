@@ -1,0 +1,10 @@
+
+
+from aBuild.io import read
+from aBuild import Controller
+path = './'
+file = 'AgPt'
+
+#results = read(path,file)
+
+myController = Controller()
