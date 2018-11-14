@@ -1,0 +1,21 @@
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def chdir(target):
+    """Context manager for executing some code within a different
+    directory after which the current working directory will be set
+    back to what it was before.
+
+    Args:
+        target (str): path to the directory to change into.
+    """
+    from os import getcwd, chdir
+    current = getcwd()
+    try:
+        chdir(target)
+        yield target
+    finally:
+        chdir(current)
