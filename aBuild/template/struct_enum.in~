@@ -1,0 +1,19 @@
+FCC ternary
+bulk
+{%- for vec in lattice %}
+{{ vec}}
+{%- endfor%}
+{{k_nary}}
+{{n_basis}}
+# Cartesian coordinates: 
+{%- for basis in atomic_basis%}
+{{ basis }}
+{%- endfor%}
+{{size_low}} {{size_high}}
+{{ eps }}
+full list of labelings (including incomplete labelings) is used
+# Concentration ranges
+{%- for conc in concentrations%}
+{{ conc }}
+{%- endfor%}
+
