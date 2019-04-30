@@ -10,6 +10,8 @@ script_options = {
            "help": "Build VASP folders."},
     "-build": {"action": "store_true",
            "help": "Build input files for fitting."},
+    "-report": {"action": "store_true",
+           "help": "Build a report of the results of the calculations."},
     "-rgk": {"action": "store_true",
            "help": "Do you want to run the getKpoint script?."},
     "-s": {"action": "store_true",
@@ -60,7 +62,7 @@ def _parser_options():
     #We have two options: get some of the details from the config file,
     import argparse
     import sys
-
+    #    from matdb import base
     pdescr = "aBuild Constructor"
     parser = argparse.ArgumentParser(description=pdescr)
     for arg, options in script_options.items():
@@ -74,7 +76,7 @@ def _parser_options():
 
 
 def run(args):
-    """Runs the aBuild setup and cleanup to produce database files.
+    """Runs the matdb setup and cleanup to produce database files.
     """
     if args is None:
         return
@@ -96,6 +98,8 @@ def run(args):
         cdb.setup_relax_select_input()
     if args.add:
         cdb.augmentTraining()
+    if args.report:
+        cdb.gatherResults()
 #    if args["s"]:
 #        cdb.setup(args["rerun"], args["dfilter"])
 #    if args["x"]:

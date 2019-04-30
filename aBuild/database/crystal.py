@@ -57,6 +57,20 @@ class Lattice:
         else:
             return self.Bv
 
+
+    @property
+    def recip_Lv(self):
+        if len(self.Lv) == 0:
+            raise ValueError("Lattice vectors are required for finding reciprocal"
+                             " lattice vectors.")
+
+        from numpy import array
+        groupings = [[self.Lv[1], self.Lv[2]], [self.Lv[2], self.Lv[0]], 
+                     [self.Lv[0], self.Lv[1]]]
+        crosses = [cross(v[0], v[1]) for v in groupings]
+        dots = [dot(self.Lv[i], crosses[i]) for i in [0,1,2]]
+        return [crosses[i]/dots[i] for i in [0,1,2]]
+        
     @property
     def Bv_direct(self):
         from numpy import sum as nsum, array
@@ -91,14 +105,20 @@ class Crystal(object):
         if isinstance(crystalSpecs,dict):  # When the crystal info is given in a dictionary
             self._init_dict(crystalSpecs)
         elif isinstance(crystalSpecs,str): # Read a file with (probably poscar)
+            print('initializing from a file')
             self._init_file(crystalSpecs)
         elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
+            print('initializing from a list')
             self._init_lines(crystalSpecs, lFormat)
-
+        print(self.basis,'basis')
         self.results = None
         self.nAtoms = sum(self.atom_counts)
         self.nTypes = len(self.atom_counts)
+        
         if self.nAtoms != len(self.basis):
+            print(self.nAtoms, 'nAtoms')
+            print(self.basis, 'basis')
+            print(self.atom_counts)
             msg.fatal("We have a problem")
 
             #        print("Before, the atom counts was {}.".format(self.atom_counts)) 
@@ -164,11 +184,15 @@ class Crystal(object):
         
     def _init_file(self,filepath):
 
+        print(filepath.lower(),'here')
         if 'poscar' in filepath.lower():
             self.from_poscar(filepath)
+        elif 'input.in' in filepath.lower():
+            self.from_lammpsin(filepath)
         else:
             msg.fatal("Not sure about the format of the file you want me to read")
 
+            
     def _init_lines(self,lines,linesFormat):
         if linesFormat == 'mlpselect':
             self.fromMLPSelect(lines)
@@ -217,6 +241,25 @@ class Crystal(object):
         to a file."""
         return '\n'.join(self.lines())
 
+
+
+    @property
+    def recip_Lv(self):
+        if len(self.lattice) == 0:
+            raise ValueError("Lattice vectors are required for finding reciprocal"
+                             " lattice vectors.")
+
+        from numpy import array,cross,dot
+        groupings = [[self.lattice[1], self.lattice[2]], [self.lattice[2], self.lattice[0]], 
+                     [self.lattice[0], self.lattice[1]]]
+        crosses = [cross(v[0], v[1]) for v in groupings]
+        dots = [dot(self.lattice[i], crosses[i]) for i in [0,1,2]]
+        return [crosses[i]/dots[i] for i in [0,1,2]]
+
+
+    @property
+    def concentrations(self):
+        return [self.atom_counts[x]/sum(self.atom_counts) for x in range(self.knary)]
     
     @property
     def Bv_cartesian(self):
@@ -225,6 +268,19 @@ class Crystal(object):
             return [nsum([B[i]*self.lattice[i]*self.latpar for i in [0,1,2]], axis=0) for B in self.basis]
         else:
             return self.basis
+
+    @property
+    def lattice_lines_LAMMPS(self):
+        """Return \n joined lattice vector text lines."""
+        lines = ' a1 '
+        lines += ' '.join(map(str,self.lattice[0]))
+        lines += ' a2 '
+        lines += ' '.join(map(str,self.lattice[1]))
+        lines += ' a3 '
+        lines += ' '.join(map(str,self.lattice[2]))
+
+        return lines
+#        return zip(['a1','a2','a3'],[' '.join(map(str,x)) for x in self.lattice]) #'\n'.join(list(self.lattice))
 
     @property
     def lattice_lines(self):
@@ -238,6 +294,43 @@ class Crystal(object):
         
         return '\n'.join( [' '.join(map(str,x)) for x in self.lattice * self.latpar]) #'\n'.join(list(self.lattice))
 
+    @property
+    def basis_lines_LAMMPS(self):
+        """Return \n joined lattice vector text lines."""
+        lines = ''
+        for i in self.basis:
+            lines += ' basis '
+            lines += ' '.join(map(str,i))
+
+        return lines
+
+    @property
+    def basis_lines_ESPRESSO(self):
+        """Return \n joined lattice vector text lines."""
+        speciesList = []
+        for i in range(self.nTypes):
+            speciesList += [self.species[i] for x in range(self.atom_counts[i])]
+            
+        lines = ''
+        print(speciesList)
+        for idx,i in enumerate(self.basis):
+            lines += speciesList[idx] + ' '
+            lines += ' '.join(map(str,i))
+            lines += '\n'
+
+        return lines[:-1]
+
+    @property
+    def unknown(self):
+        """Return \n joined lattice vector text lines."""
+        atomLabels = [ x for sublist in [ [  i for k in range(self.atom_counts[i]) ]   for i in range(self.nTypes)] for x in sublist]
+        lines = ""
+        for i,v in enumerate(atomLabels):
+            lines += ' basis '
+            lines += str(i+1) + ' ' + str(v+1)
+
+        return lines
+    
     @property
     def basis_lines(self):
         """Return \n joined basis vector text lines."""
@@ -384,6 +477,50 @@ class Crystal(object):
             raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
             
 
+    @property
+    def reportline(self):
+        print(self.title,' title')
+        line = [self.title , self.results["energy"], self.results["formation enthalpy"]]
+        lineWrite = '{}  {:9.4f}   {:9.4f}'
+        
+        for i in range(self.knary):
+            line.append(self.concentrations[i])
+            lineWrite += '  {:4.2f}  '
+#        for i in range(self.knary):
+#            line.append(self.pures[i].results["energy"])
+#            lineWrite += '{:8.5f}'
+#        for i in range(self.knary):
+#            line.append(self.atom_counts[i])
+#            lineWrite += '{:2d}'
+
+
+        return lineWrite.format(*line)
+
+
+    def from_lammpsin(self,filepath):
+        from numpy import array
+        with open(filepath,'r') as f:
+            lines = f.readlines()
+
+        for idx,line in enumerate(lines):
+            if 'lattice' in line:
+                self.lattice = array([map(float,line.split()[4:7]),map(float,line.split()[8:11]), map(float,line.strip('&').split()[12:15])])
+                nBasis = lines[idx + 1].count('basis')
+                self.basis = [map(float,lines[idx+1].strip().strip('basis').split()[i * 4:4 * (i+ 1) - 1]) for i in range(nBasis)]
+                self.latpar = float(line.split()[2])
+            if 'create_box' in line:
+                self.knary = int(line.split()[1])
+
+            if 'create_atoms' in line:
+                self.atom_counts = [0 for i in range(self.knary) ]
+                print(nBasis, 'nbasis')
+                print(line.split()[5::3], 'here')
+                for idx,elem in enumerate(line.split()[5::3]):
+                    print(idx, elem)
+                    self.atom_counts[int(elem)-1] += 1
+        self.coordsys = 'D'
+        self.title = path.split(filepath)[0].split('/')[-1] + lines[1].split('\n')[0]
+        
     def fromMLPSelect(self,lines):
         from numpy import array
         nAtoms = int(lines[2].split()[0])

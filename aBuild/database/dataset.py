@@ -8,6 +8,8 @@ class dataset:
         from os import path,makedirs
         from aBuild.database.crystal import Crystal
         from aBuild.calculators.vasp import VASP
+
+        self.calculator = calculator
         
         if isinstance(dset,list):
             
@@ -26,8 +28,6 @@ class dataset:
 
         self.species = systemSpecies
         self.root = root
-        self.calculator = calculator
-
 
     # Used to be called 'buildFoldersFromEnum
     def init_enum(self,enumdicts,systemSpecies,runGetKpoints = True):
@@ -97,13 +97,33 @@ class dataset:
     def init_paths(self,paths,systemSpecies):
         from aBuild.database.crystal import Crystal
         from aBuild.calculators.vasp import VASP
+        from aBuild.calculators.lammps import LAMMPS
+        from os import path
+        
         self.crystals = []
         for dirpath in paths:
-            calc = VASP(dirpath,systemSpecies)
-            calc.read_results()
+            print(dirpath, 'path')
+            if self.calculator == 'VASP':
+                calc = VASP(dirpath,systemSpecies)
+                calc.read_results()
+
+            #Added for LAMMPS compatibility
+            if self.calculator == 'LAMMPS':
+                calc = LAMMPS(dirpath,systemSpecies)
+                print('made it here!!')
+                calc.read_results()
+#            calc.add_to_results('energyLAMMPS',calcTwo.energy)
+#            calc.add_to_results('energyLAMMPSPureA',calcTwo.pureA.energy)
+#            calc.add_to_results('energyLAMMPSPureB',calcTwo.pureB.energy)
             if calc.crystal.results is not None:
                 self.crystals.append(calc.crystal)
-        
+
+        print(path.split(paths[0]))
+        for i in calc.crystal.species:
+            purepath = path.join(path.split(paths[0])[0],'pure' + i)
+            pure = LAMMPS(purepath,systemSpecies)
+            pure.read_results()
+            self.crystals.append(pure.crystal)
             
 
     def starting_point(self,folderpath):
@@ -126,6 +146,8 @@ class dataset:
     def buildFolders(self,buildpath,calculator,runGetKpoints = True,foldername = 'E'):
         from os import path
         from aBuild.calculators.vasp import VASP
+        from aBuild.calculators.lammps import LAMMPS
+        from aBuild.calculators.espresso import ESPRESSO
         from aBuild.jobs import Job
 
         import os
@@ -135,9 +157,21 @@ class dataset:
                 print('Made path:',buildpath)
         configIndex = startPoint = self.starting_point(buildpath)
         for crystal in self.crystals:
-            vaspspecs = {"incar":calculator["incar"],"kpoints":calculator["kpoints"], 'potcar':calculator["potcars"],"crystal":crystal}
-            thisVASP = VASP(vaspspecs,self.species)
-        
+            if 'vasp' in calculator["name"]:
+                vaspspecs = {"incar":calculator["incar"],"kpoints":calculator["kpoints"], 'potcar':calculator["potcars"],"crystal":crystal}
+                thisVASP = VASP(vaspspecs,self.species)
+            if 'lammps' in calculator["name"]:
+                print('lammps triggered')
+                specsDict = {"crystal":crystal, "potential":calculator["potential"]}
+                thisLAMMPS = LAMMPS(specsDict,self.species)
+                
+            if 'qe' in calculator["name"]:
+                print('espresso triggered')
+                specsDict = {"crystal":crystal, "pseudopotentials":calculator["pseudopotentials_qe"]}
+                thisESPRESSO = ESPRESSO(specsDict,self.species)
+            
+
+                
             runpath = path.join(buildpath,foldername + ".{}".format(configIndex) )
             if not path.isdir(runpath):
                 os.mkdir(runpath)
@@ -145,7 +179,16 @@ class dataset:
                 msg.fatal("I'm gonna write over top of a current directory. ({})  I think I'll stop instead.".format(runpath)) 
             print("Building folder for structure: {}".format(crystal.title) )
             with chdir(runpath):
-                thisVASP.buildFolder(runGetKPoints = runGetKpoints)
+                print(calculator["name"])
+                if 'vasp' in calculator["name"]:
+                    print('building for vasp')
+                    thisVASP.buildFolder(runGetKPoints = runGetKpoints)
+                if 'lammps' in calculator["name"]:
+                    print('building for lammps')
+                    thisLAMMPS.buildFolder()
+                if 'qe' in calculator["name"]:
+                    print('building for espresso')
+                    thisESPRESSO.buildFolder()
             configIndex += 1
 
         exdir = path.join(buildpath,'E.')
@@ -201,3 +244,35 @@ class dataset:
                     remove(delpath)
                 
         thisMTP.write_relaxin()
+
+
+
+    def writeReport(self):
+        import datetime
+        nAtoms = len(self.crystals[0].species)
+        with open('dataReport_' + self.calculator + '.txt', 'w') as f:
+            f.write(self.calculator + ' REPORT\n')
+            f.write(str(datetime.datetime.now()) + '\n')
+            f.write("# S. Number               F. Enthalpy                Conc.     S. Energy.   E(A)    E(B)   A atoms      B atoms\n")
+            f.write('------------------------------------------------------------------------------------------------------------------\n')
+            for crystal in self.crystals[:-nAtoms]:
+                f.write(crystal.reportline)
+                for i in range(-nAtoms,0,1):
+                    print('writing pure energies')
+                    f.write(" {:8.5f}".format(self.crystals[i].results["energy"]))
+                #f.write(" {:8.5f}".format(self.crystals[-nAtoms].results["energy"]))
+                for i in range(nAtoms):
+                    f.write(" {:2d}".format(crystal.atom_counts[i]))
+                    #f.write(" {:2d}".format(crystal.atom_counts[1]))
+                f.write('\n')
+
+
+
+
+
+
+
+
+
+
+                

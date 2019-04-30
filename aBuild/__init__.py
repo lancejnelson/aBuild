@@ -280,3 +280,26 @@ class Controller(object):
         msg.info('Errors')
         msg.info(' '.join(stat['error']))
 
+    def gatherResults(self):
+        from os import path
+        from glob import glob
+        from aBuild.database.dataset import dataset
+
+        
+
+        trainingRoot = path.join(self.root, 'training_set')
+        with chdir(trainingRoot):
+            enumdirs = glob("E.*")
+            activedirs = glob("A.*")
+
+        dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
+        #        dirs = enumdirs + activedirs
+
+        print('Building dataset')
+        trainingSet = dataset(dirs,self.species,calculator = 'LAMMPS')
+        print('here')
+        trainingSet.writeReport()
+        
+        trainingSet = dataset(dirs,self.species,calculator = 'VASP')
+        print('here')
+        trainingSet.writeReport()

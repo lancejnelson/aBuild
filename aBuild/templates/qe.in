@@ -1,0 +1,40 @@
+&control 
+verbosity='debug' 
+calculation='scf' 
+restart_mode='from_scratch' 
+pseudo_dir='/home/nelslanc/codes/q-e/pslibrary/pbe/PSEUDOPOTENTIALS' 
+outdir='./'
+prefix='AgPt' 
+tprnfor=.true. 
+tstress=.true. 
+/ 
+&system 
+ibrav=0 
+a= {{ latpar }}
+nat= {{ nAtoms }}
+ntyp= {{ knary }} 
+ecutwfc=40.0 
+occupations='smearing' 
+smearing='mp' 
+degauss=0.2 
+/ 
+&electrons 
+conv_thr=1.D-6 
+diagonalization='david' 
+mixing_beta=0.3 
+/ 
+&ions 
+/ 
+&cell 
+cell_dynamics='bfgs' 
+press=0.00 
+wmass=.007 
+/ 
+CELL_PARAMETERS
+{{ lVs }} 
+ATOMIC_SPECIES 
+{{ pseudopotentials }}
+ATOMIC_POSITIONS crystal 
+{{ bVs }}
+K_POINTS automatic 
+{{ kPoints }}

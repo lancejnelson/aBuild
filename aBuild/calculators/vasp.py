@@ -160,8 +160,8 @@ class VASP:
         self.KPOINTS.writeKPOINTS()
         
         print("KPOINTS built")
-        self.POTCAR.writePOTCAR()
-        print("POTCAR built")
+        #self.POTCAR.writePOTCAR()
+        #print("POTCAR built")
 
     def read_forces(self,allIonic = True):
 
@@ -254,10 +254,16 @@ class VASP:
                 self.crystal.results["stress"] = self.read_stress()
                 #self.POTCAR = POTCAR.from_POTCAR()
                 self.crystal.results["species"] = self.POTCAR.species
+                print(self.crystal.results,'RESULTS')
         else:
             self.crystal.results = None
             msg.info("Unable to extract necessary information from directory! ({})".format(self.directory))
     
+    def add_to_results(self,key,item):
+        if self.crystal.results is None:
+            self.crystal.results = {}
+        self.crystal.results[key] = item
+        
         
 class POTCAR:
 
@@ -470,9 +476,32 @@ class KPOINTS:
     def equivalent(self):
         pass
 
-    def monkPack(self): 
-        pass
+    def monkPack(self,kvecs,nAtoms): 
+        from math import sqrt
+        from numpy import dot,array,round,prod,argmin
 
+        magnitudes = [sqrt(dot(k, k)) for k in kvecs]
+        sortmags = sorted(magnitudes)
+        largest = sortmags[-1]
+        relativediff = [magnitudes[x]/largest for x in range(3)]
+        possibleDivisions = [round(array(relativediff) * i)  for i in range(1,20) if not any(round(array(relativediff) * i) == 0) ]
+        densities = array([prod(i) * nAtoms for i in possibleDivisions])
+        uniformMeasure = [sum(abs(round(array(relativediff) * i) - array(relativediff) * i)) for i in range(1,20)]
+
+        locMin = argmin(uniformMeasure)
+
+        bestDensity = argmin(abs(densities- float(self.density)))
+        if bestDensity != 0:
+            densityChoices = [bestDensity - 1, bestDensity, bestDensity + 1]
+            uniformityChoices = uniformMeasure[bestDensity -1: bestDensity + 2]
+        else:
+            densityChoices = [ bestDensity, bestDensity + 1]
+            uniformityChoices = uniformMeasure[bestDensity: bestDensity + 2]
+
+        bestChoice = densityChoices[argmin(uniformityChoices)]
+        print(bestChoice)
+        #        thisOne = densityChoices[argmin(uniformMeasure[argmin(abs(densities- float(targetDensity))) -1: argmin(abs(densities- float(targetDensity))) + 2])]
+        return list(map(int,possibleDivisions[bestChoice])) + [0,0,0]
 
 class POSCAR(object):
     """Represents the POSCAR text representation of a crystal. Useful so that

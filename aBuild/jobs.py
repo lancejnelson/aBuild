@@ -20,10 +20,11 @@ class Job:
         from jinja2 import Environment, PackageLoader  # Package for building files from a template
         from os import path
         env = Environment(loader=PackageLoader('aBuild', 'templates'))
-        if self.arrayJob:
-            template = env.get_template("run_array_ml.sh")
-        else:
-            template = env.get_template("run_mtp_ml.sh")
+        template = env.get_template(self.jobSettings["template"])
+#        if self.arrayJob:
+#            template = env.get_template("run_array_ml.sh")
+#        else:
+#            template = env.get_template("run_mtp_ml.sh")
 
         target = 'jobscript.sh'
         with open(target,'w') as f:
