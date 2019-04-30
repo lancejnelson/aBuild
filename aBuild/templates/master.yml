@@ -1,0 +1,133 @@
+title: 'AgPd Alloy Database'
+# Ordered list of species; this is the same order as should be in the
+# POTCAR file for VASP calculations.
+species:
+  - 'Au'
+  - 'Pt'
+# Directory in which the database folder system will be created.
+root: '~/AuPt'
+# These are global settings for INCAR, POTCAR, and KPOINTS that will
+# be applied to *all* the VASP calculations in all databases. They can
+# be overridden in each database.
+calculator:
+  build: 'vasp_and_lammps_and_qe'
+  vasp:
+    incar:
+      prec: 'a'
+      #  encut: 400
+      #  isym: 0
+      lwave: False
+      lreal: 'auto'
+
+      #ediff: 0.00001
+      ismear: 1
+      sigma: 0.1
+    potcars:
+      directory: '/apps/restricted/easybuild/software/VASP/5.3.2-ictcet-4.5.0/pot'
+      xc: 'PBE'
+      versions:
+        Au: '04Oct2007'
+        Pt: '12Dec2005'
+      setups:
+        Au: ''
+        Pt: '_pv'
+    kpoints:
+      method : 'mueller'
+      mindistance: 70  # Bigger numbers mean denser meshes
+      KPPRA: 2000
+
+
+  qe:
+    pseudopotentials:
+      directory: '/home/nelslanc/codes/q-e/pslibrary/pbe/PSEUDOPOTENTIAL'
+      versions:
+        Au: Au.pbe-spfn-rrkjus_psl.1.0.0.UPF
+        Pt: Pt.pbe-spfn-rrkjus_psl.1.0.0.UPF
+
+    kpoints:
+      method: 'mp'
+      KPPRA: 2000
+
+  lammps:
+    template: 'lammps.in'
+    potential: 'PtAu.eam.alloy'
+
+# Parameters for the job arrays that will be submitted for each
+# database. These can be overridden in each database below as well.
+  execution:
+    template: 'run_array_falcon.sh'
+    time: 10
+    ntasks: 1
+    nodes: 1
+    mem_per_cpu: 8
+    job_name: 'Hf-Ni-Si DB'
+  #  partition: 'physics'
+    array_limit: 150
+    exec_path: 'vasp6.x'
+  #  options:
+  #    - "--qos=msg"
+  #    - "-C knl"
+# Next, we include a list of all the databases we want to create. A
+# database following this pattern is created *for each* of the seed
+# configurations listed above.
+trainingset: #used to be database
+  #The PhononBase class generates the dynamical matrix that is needed
+  #by PhononDatabase.
+  name: 'enumerated'  # I get to choose the name
+  lattice:
+    - "fcc"
+    - "hcp"
+    - "bcc"
+#  concs: [ [], [[0,1,2] , [0,1,4]] ]
+  nconfigs: [2,2,2]  # One number per lattice defined in the lattice variable
+#  siteRestrictions: [['0/1'],['0/1','0/1']]
+  sizes: [[1,12],[1,6],[1,12]]
+#        ran_seed: 10
+gss: # Structures to put in the mtp relax set
+  name: 'gss'
+  lattice:
+    - "fcc"
+    - "bcc"
+    - "hcp"
+    - "protos"
+#  concs: [ [], [[0,1,2] , [0,1,4]] ]
+#  siteRestrictions: [['0/1'],['0/1','0/1']]
+  sizes: [[1,12],[1,6],[1,12],[1,10],all]
+  nconfigs: [6,6,6,all]
+holdout:
+  name: 'holdout'
+  lattice:
+    - "sc"
+    - "fcc"
+    - "bcc"
+    - "hcp"
+    - "protos"
+#  concs: [ [], [[0,1,2] , [0,1,4]] ]
+#  siteRestrictions: [['0/1'],['0/1','0/1']]
+  sizes: [[1,12],[1,6],[1,12]]
+  nconfigs: [100000,100000,100000,100000,all]
+fitting:
+  pot: 20g.mtp
+  dbs: ['*'] 
+  execution:
+    template: 'run_mtp_ml.sh'
+    time: 10
+    ntasks: 1
+    nodes: 1
+    mem_per_cpu: 500
+    job_name: 'Ni-Sb-Ti fitting'
+#  options:
+#    - "--qos=msg"
+#    - "-C knl"
+    modules: ['mpi/openmpi-1.8.5_intel-15.0.2','compiler_intel/2017']
+#   
+  fits:
+    - name: "AgPt"
+      dbs: ["*"]
+      steps:
+        - type: "mtp.MTP"
+          selection-limit: 200
+          split: "A"
+          species:
+            - "Ag"
+            - "Pt"

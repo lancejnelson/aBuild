@@ -157,17 +157,17 @@ class dataset:
                 print('Made path:',buildpath)
         configIndex = startPoint = self.starting_point(buildpath)
         for crystal in self.crystals:
-            if 'vasp' in calculator["name"]:
-                vaspspecs = {"incar":calculator["incar"],"kpoints":calculator["kpoints"], 'potcar':calculator["potcars"],"crystal":crystal}
+            if 'vasp' in calculator["build"]:
+                vaspspecs = {"incar":calculator["vasp"]["incar"],"kpoints":calculator["vasp"]["kpoints"], 'potcar':calculator["vasp"]["potcars"],"crystal":crystal}
                 thisVASP = VASP(vaspspecs,self.species)
-            if 'lammps' in calculator["name"]:
+            if 'lammps' in calculator["build"]:
                 print('lammps triggered')
-                specsDict = {"crystal":crystal, "potential":calculator["potential"]}
+                specsDict = {"crystal":crystal, "potential":calculator["lammps"]["potential"]}
                 thisLAMMPS = LAMMPS(specsDict,self.species)
                 
-            if 'qe' in calculator["name"]:
+            if 'qe' in calculator["build"]:
                 print('espresso triggered')
-                specsDict = {"crystal":crystal, "pseudopotentials":calculator["pseudopotentials_qe"]}
+                specsDict = {"crystal":crystal, "pseudopotentials":calculator["qe"]["pseudopotentials"]}
                 thisESPRESSO = ESPRESSO(specsDict,self.species)
             
 
@@ -179,14 +179,14 @@ class dataset:
                 msg.fatal("I'm gonna write over top of a current directory. ({})  I think I'll stop instead.".format(runpath)) 
             print("Building folder for structure: {}".format(crystal.title) )
             with chdir(runpath):
-                print(calculator["name"])
-                if 'vasp' in calculator["name"]:
+                print(calculator["build"])
+                if 'vasp' in calculator["build"]:
                     print('building for vasp')
                     thisVASP.buildFolder(runGetKPoints = runGetKpoints)
-                if 'lammps' in calculator["name"]:
+                if 'lammps' in calculator["build"]:
                     print('building for lammps')
                     thisLAMMPS.buildFolder()
-                if 'qe' in calculator["name"]:
+                if 'qe' in calculator["build"]:
                     print('building for espresso')
                     thisESPRESSO.buildFolder()
             configIndex += 1

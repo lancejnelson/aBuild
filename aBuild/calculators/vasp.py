@@ -160,7 +160,7 @@ class VASP:
         self.KPOINTS.writeKPOINTS()
         
         print("KPOINTS built")
-        #self.POTCAR.writePOTCAR()
+        self.POTCAR.writePOTCAR()
         #print("POTCAR built")
 
     def read_forces(self,allIonic = True):
@@ -255,6 +255,7 @@ class VASP:
                 #self.POTCAR = POTCAR.from_POTCAR()
                 self.crystal.results["species"] = self.POTCAR.species
                 print(self.crystal.results,'RESULTS')
+                self.crystal.results["fEnth"] = self.formationEnergy
         else:
             self.crystal.results = None
             msg.info("Unable to extract necessary information from directory! ({})".format(self.directory))
@@ -263,6 +264,9 @@ class VASP:
         if self.crystal.results is None:
             self.crystal.results = {}
         self.crystal.results[key] = item
+
+#    @property
+#    def formationEnergy(self):
         
         
 class POTCAR:
@@ -324,7 +328,9 @@ class POTCAR:
         self.species.sort()
         self.species.reverse()
         pots = [path.join(self.srcdirectory,x + self.setups[x],'POTCAR') for x in self.species]
+        print(pots, 'pots')
         if all([isfile(x) for x in pots]):
+            print('found files')
             potsGood = True
             for pot in pots:
                 with open(pot, 'r') as f:
@@ -333,7 +339,8 @@ class POTCAR:
                     potsGood = False
             
             return potsGood
-        else: 
+        else:
+            print("can't find files")
             return False
         
     def writePOTCAR(self,filename = 'POTCAR'):

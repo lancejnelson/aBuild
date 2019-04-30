@@ -1,7 +1,8 @@
 #!/bin/bash
 
 #PBS -N {{ job_name }}
-#PBS -l walltime={{ time }}:00:00   # walltime
+#PBS -P nst
+#PBS -l walltime={{ time }}:00:00  
 #PBS -l select={{ nodes }}:ncpus={{ ntasks }}:mem={{ mem_per_cpu }}gb
 {%- if array_limit %}
 #PBS -J {{array_start}}-{{ array_end }}%{{array_limit}}                                                   

@@ -68,6 +68,7 @@ class ESPRESSO:
         settings["knary"] = self.crystal.nTypes
         settings["lVs"] = self.crystal.lattice_lines
         settings["bVs"] = self.crystal.basis_lines_ESPRESSO
+        settings["directory"] = self.pseudopotentials["directory"]
         settings["pseudopotentials"] = self.pseudoLines
         kptsdict = {"method":"MP", "mindistance":2000}
         kPts = KPOINTS(kptsdict)
@@ -85,7 +86,7 @@ class ESPRESSO:
     def pseudoLines(self):
         lines = ''
         for i in range(self.crystal.nTypes):
-            lines += self.crystal.species[i] + ' 1.0 ' + self.pseudopotentials[self.crystal.species[i]] + '\n'
+            lines += self.crystal.species[i] + ' 1.0 ' + self.pseudopotentials["versions"][self.crystal.species[i]] + '\n'
         return lines[:-1]
     def read_results(self):
         outFilePath = path.join(self.directory,'lammps.out')

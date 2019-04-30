@@ -2,7 +2,7 @@
 verbosity='debug' 
 calculation='scf' 
 restart_mode='from_scratch' 
-pseudo_dir='/home/nelslanc/codes/q-e/pslibrary/pbe/PSEUDOPOTENTIALS' 
+pseudo_dir={{ pseudodir }}
 outdir='./'
 prefix='AgPt' 
 tprnfor=.true. 

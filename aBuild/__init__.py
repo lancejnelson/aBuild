@@ -29,7 +29,7 @@ class Controller(object):
         # Read the input file
         self.specs = read(root,inputFile)
 
-        if "directory" not in self.specs["calculator"]["potcars"] or self.specs["calculator"]["potcars"]["directory"] is None:
+        if "directory" not in self.specs["calculator"]["vasp"]["potcars"] or self.specs["calculator"]["vasp"]["potcars"]["directory"] is None:
             print("You did not provide a directory for the POTCARS. Using the environment variable that I found: {}".format(config.POTCAR_DIR))
             self.specs["calculator"]["potcars"]["directory"] = config.POTCAR_DIR
 
