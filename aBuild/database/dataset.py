@@ -102,7 +102,6 @@ class dataset:
         
         self.crystals = []
         for dirpath in paths:
-            print(dirpath, 'path')
             if self.calculator == 'VASP':
                 calc = VASP(dirpath,systemSpecies)
                 calc.read_results()
@@ -110,20 +109,10 @@ class dataset:
             #Added for LAMMPS compatibility
             if self.calculator == 'LAMMPS':
                 calc = LAMMPS(dirpath,systemSpecies)
-                print('made it here!!')
                 calc.read_results()
-#            calc.add_to_results('energyLAMMPS',calcTwo.energy)
-#            calc.add_to_results('energyLAMMPSPureA',calcTwo.pureA.energy)
-#            calc.add_to_results('energyLAMMPSPureB',calcTwo.pureB.energy)
             if calc.crystal.results is not None:
                 self.crystals.append(calc.crystal)
 
-        print(path.split(paths[0]))
-        for i in calc.crystal.species:
-            purepath = path.join(path.split(paths[0])[0],'pure' + i)
-            pure = LAMMPS(purepath,systemSpecies)
-            pure.read_results()
-            self.crystals.append(pure.crystal)
             
 
     def starting_point(self,folderpath):
@@ -157,15 +146,15 @@ class dataset:
                 print('Made path:',buildpath)
         configIndex = startPoint = self.starting_point(buildpath)
         for crystal in self.crystals:
-            if 'vasp' in calculator["build"]:
+            if 'vasp' in calculator["active"]:
                 vaspspecs = {"incar":calculator["vasp"]["incar"],"kpoints":calculator["vasp"]["kpoints"], 'potcar':calculator["vasp"]["potcars"],"crystal":crystal}
                 thisVASP = VASP(vaspspecs,self.species)
-            if 'lammps' in calculator["build"]:
+            if 'lammps' in calculator["active"]:
                 print('lammps triggered')
                 specsDict = {"crystal":crystal, "potential":calculator["lammps"]["potential"]}
                 thisLAMMPS = LAMMPS(specsDict,self.species)
                 
-            if 'qe' in calculator["build"]:
+            if 'qe' in calculator["active"]:
                 print('espresso triggered')
                 specsDict = {"crystal":crystal, "pseudopotentials":calculator["qe"]["pseudopotentials"]}
                 thisESPRESSO = ESPRESSO(specsDict,self.species)
@@ -179,14 +168,13 @@ class dataset:
                 msg.fatal("I'm gonna write over top of a current directory. ({})  I think I'll stop instead.".format(runpath)) 
             print("Building folder for structure: {}".format(crystal.title) )
             with chdir(runpath):
-                print(calculator["build"])
-                if 'vasp' in calculator["build"]:
+                if 'vasp' in calculator["active"]:
                     print('building for vasp')
                     thisVASP.buildFolder(runGetKPoints = runGetKpoints)
-                if 'lammps' in calculator["build"]:
+                if 'lammps' in calculator["active"]:
                     print('building for lammps')
                     thisLAMMPS.buildFolder()
-                if 'qe' in calculator["build"]:
+                if 'qe' in calculator["active"]:
                     print('building for espresso')
                     thisESPRESSO.buildFolder()
             configIndex += 1
@@ -255,16 +243,8 @@ class dataset:
             f.write(str(datetime.datetime.now()) + '\n')
             f.write("# S. Number               F. Enthalpy                Conc.     S. Energy.   E(A)    E(B)   A atoms      B atoms\n")
             f.write('------------------------------------------------------------------------------------------------------------------\n')
-            for crystal in self.crystals[:-nAtoms]:
+            for crystal in self.crystals:
                 f.write(crystal.reportline)
-                for i in range(-nAtoms,0,1):
-                    print('writing pure energies')
-                    f.write(" {:8.5f}".format(self.crystals[i].results["energy"]))
-                #f.write(" {:8.5f}".format(self.crystals[-nAtoms].results["energy"]))
-                for i in range(nAtoms):
-                    f.write(" {:2d}".format(crystal.atom_counts[i]))
-                    #f.write(" {:2d}".format(crystal.atom_counts[1]))
-                f.write('\n')
 
 
 

@@ -58,18 +58,6 @@ class Lattice:
             return self.Bv
 
 
-    @property
-    def recip_Lv(self):
-        if len(self.Lv) == 0:
-            raise ValueError("Lattice vectors are required for finding reciprocal"
-                             " lattice vectors.")
-
-        from numpy import array
-        groupings = [[self.Lv[1], self.Lv[2]], [self.Lv[2], self.Lv[0]], 
-                     [self.Lv[0], self.Lv[1]]]
-        crosses = [cross(v[0], v[1]) for v in groupings]
-        dots = [dot(self.Lv[i], crosses[i]) for i in [0,1,2]]
-        return [crosses[i]/dots[i] for i in [0,1,2]]
         
     @property
     def Bv_direct(self):
@@ -110,15 +98,11 @@ class Crystal(object):
         elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
             print('initializing from a list')
             self._init_lines(crystalSpecs, lFormat)
-        print(self.basis,'basis')
         self.results = None
         self.nAtoms = sum(self.atom_counts)
         self.nTypes = len(self.atom_counts)
         
         if self.nAtoms != len(self.basis):
-            print(self.nAtoms, 'nAtoms')
-            print(self.basis, 'basis')
-            print(self.atom_counts)
             msg.fatal("We have a problem")
 
             #        print("Before, the atom counts was {}.".format(self.atom_counts)) 
@@ -130,7 +114,6 @@ class Crystal(object):
         if len(self.species) != self.nTypes:
             msg.fatal('The number of atom types provided ({})is not consistent with the number of atom types found in the poscar ({})'.format(self.species,self.nTypes))
         if self.species == None:
-            print(self.species)
             msg.fatal('I have to know what kind of atoms are in the crystal')
         if self.latpar is None and self.species is not None:
             self.set_latpar()
@@ -184,7 +167,6 @@ class Crystal(object):
         
     def _init_file(self,filepath):
 
-        print(filepath.lower(),'here')
         if 'poscar' in filepath.lower():
             self.from_poscar(filepath)
         elif 'input.in' in filepath.lower():
@@ -259,7 +241,7 @@ class Crystal(object):
 
     @property
     def concentrations(self):
-        return [self.atom_counts[x]/sum(self.atom_counts) for x in range(self.knary)]
+        return [self.atom_counts[x]/sum(self.atom_counts) for x in range(self.nTypes)]
     
     @property
     def Bv_cartesian(self):
@@ -312,7 +294,6 @@ class Crystal(object):
             speciesList += [self.species[i] for x in range(self.atom_counts[i])]
             
         lines = ''
-        print(speciesList)
         for idx,i in enumerate(self.basis):
             lines += speciesList[idx] + ' '
             lines += ' '.join(map(str,i))
@@ -472,21 +453,26 @@ class Crystal(object):
             if self.latpar == 1.0:
                 self.latpar = None
             self.coordsys = lines.coordsys
-            self.title  = lines.label
+#            self.title  = lines.label
+            self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
+
         except:
             raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
             
 
     @property
     def reportline(self):
-        print(self.title,' title')
-        line = [self.title , self.results["energy"], self.results["formation enthalpy"]]
-        lineWrite = '{}  {:9.4f}   {:9.4f}'
+        line = [self.title , self.results["energyF"], self.results["energyF"]]
+        lineWrite = '{:35s}  {:9.4f}   {:9.4f}'
         
-        for i in range(self.knary):
-            line.append(self.concentrations[i])
+        for i in self.concentrations:
+            line.append(i)
             lineWrite += '  {:4.2f}  '
-#        for i in range(self.knary):
+        for i in self.atom_counts:
+            line.append(i)
+            lineWrite += '  {:4d}  '
+        lineWrite += '\n'
+            #        for i in range(self.knary):
 #            line.append(self.pures[i].results["energy"])
 #            lineWrite += '{:8.5f}'
 #        for i in range(self.knary):
@@ -509,14 +495,11 @@ class Crystal(object):
                 self.basis = [map(float,lines[idx+1].strip().strip('basis').split()[i * 4:4 * (i+ 1) - 1]) for i in range(nBasis)]
                 self.latpar = float(line.split()[2])
             if 'create_box' in line:
-                self.knary = int(line.split()[1])
+                self.nTypes = int(line.split()[1])
 
             if 'create_atoms' in line:
-                self.atom_counts = [0 for i in range(self.knary) ]
-                print(nBasis, 'nbasis')
-                print(line.split()[5::3], 'here')
+                self.atom_counts = [0 for i in range(self.nTypes) ]
                 for idx,elem in enumerate(line.split()[5::3]):
-                    print(idx, elem)
                     self.atom_counts[int(elem)-1] += 1
         self.coordsys = 'D'
         self.title = path.split(filepath)[0].split('/')[-1] + lines[1].split('\n')[0]

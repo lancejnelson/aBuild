@@ -173,17 +173,20 @@ class Controller(object):
         #        dirs = enumdirs + activedirs
 
         print('Building dataset')
-        trainingSet = dataset(dirs,self.species)  
+        trainingSet = dataset(dirs,self.species,calculator='VASP')  
         
         fittingRoot = path.join(self.root,'fitting','mtp')
         thisMTP = MTP(fittingRoot,settings = self.fitting)
         thisMTP.write_blank_pot(self.knary)
         with open(path.join(fittingRoot,'train.cfg'),'a+') as f:
             for crystal in trainingSet.crystals:
-                f.writelines('\n'.join(crystal.lines('mtptrain')))
+                if crystal.results["warning"]:
+                    print("Not adding crystal: {} because the energy doesn't look right. Check it out.".format(calc.crystal.title) )
+                else:
+                    f.writelines('\n'.join(crystal.lines('mtptrain')))
 
         mlpCommand = 'mlp train pot.mtp train.cfg\n'
-        mljob = Job(self.calculator["execution"],path.join(self.root,"fitting","mtp"),mlpCommand)
+        mljob = Job(self.fitting["execution"],path.join(self.root,"fitting","mtp"),mlpCommand)
         with chdir(path.join(self.root,"fitting/mtp")):
             print('Building job file')
             mljob.write_jobfile()
@@ -264,7 +267,7 @@ class Controller(object):
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
 
-        stat = {'done':[],'running':[], 'not started': [], 'error':[], 'not setup':[]}
+        stat = {'done':[],'running':[], 'not started': [], 'error':[], 'not setup':[],'warning':[],'idk':[]}
         for dir in dirs:
             thisVASP = VASP(dir,self.species)
             stat[thisVASP.status()].append(dir.split('/')[-1])
@@ -279,6 +282,10 @@ class Controller(object):
         msg.info(' '.join(stat['not setup']))
         msg.info('Errors')
         msg.info(' '.join(stat['error']))
+        msg.info('Warnings')
+        msg.info(' '.join(stat['warning']))
+        msg.info('Not sure')
+        msg.info(' '.join(stat['idk']))
 
     def gatherResults(self):
         from os import path
@@ -291,15 +298,17 @@ class Controller(object):
         with chdir(trainingRoot):
             enumdirs = glob("E.*")
             activedirs = glob("A.*")
+            pures = glob("pure*")
 
-        dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
+        dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs + pures]
         #        dirs = enumdirs + activedirs
 
         print('Building dataset')
-        trainingSet = dataset(dirs,self.species,calculator = 'LAMMPS')
-        print('here')
-        trainingSet.writeReport()
-        
-        trainingSet = dataset(dirs,self.species,calculator = 'VASP')
-        print('here')
-        trainingSet.writeReport()
+        if self.calculator["active"].lower() == "lammps":
+            trainingSet = dataset(dirs,self.species,calculator = 'LAMMPS')
+            print('here')
+            trainingSet.writeReport()
+        if self.calculator["active"].lower() == 'vasp': 
+            trainingSet = dataset(dirs,self.species,calculator = 'VASP')
+            print('here')
+            trainingSet.writeReport()
