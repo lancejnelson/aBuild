@@ -185,11 +185,13 @@ class Controller(object):
                 else:
                     f.writelines('\n'.join(crystal.lines('mtptrain')))
 
-        mlpCommand = 'mlp train pot.mtp train.cfg\n'
-        mljob = Job(self.fitting["execution"],path.join(self.root,"fitting","mtp"),mlpCommand)
-        with chdir(path.join(self.root,"fitting/mtp")):
-            print('Building job file')
-            mljob.write_jobfile()
+
+        thisMTP.train(self.fitting["execution"])
+#        mlpCommand = 'mlp train pot.mtp train.cfg\n'
+#        mljob = Job(self.fitting["execution"],path.join(self.root,"fitting","mtp"),mlpCommand)
+#        with chdir(path.join(self.root,"fitting/mtp")):
+#            print('Building job file')
+#            mljob.write_jobfile()
 
 
     # Build files needed to run the relaxation. Lots of structures. Need to write as crystals
@@ -203,6 +205,7 @@ class Controller(object):
         from glob import glob
 
         self.dataset = "gss"
+        
 
         #        rename(path.join(self.root,'fitting/mtp')
         fittingRoot = path.join(self.root,'fitting','mtp')
@@ -211,7 +214,8 @@ class Controller(object):
             lat = self.enumDicts[ilat]["lattice"]
             
             if lat == 'protos':
-                structures = getProtoPaths()
+                structures = getProtoPaths(self.knary)
+                print(structures)
                 #                subdivide = [structures[x:x+100] for x in range() ]
                 for struct in structures:
                     print("Proto structure:", struct)

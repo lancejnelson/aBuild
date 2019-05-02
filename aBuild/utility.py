@@ -76,7 +76,7 @@ def getAllPerms(knary,justCyclic=False):
     return perms
 
     
-def getProtoPaths():
+def getProtoPaths(knary):
     from os import path
     from glob import glob
 
@@ -85,5 +85,10 @@ def getProtoPaths():
     unaries = glob('{}/*'.format(path.join(templatePath,'uniqueUnaries')))
     binaries = glob('{}/*'.format(path.join(templatePath,'uniqueBinaries')))
     ternaries = glob('{}/*'.format(path.join(templatePath,'uniqueTernaries')))
-    structures = unaries + binaries + ternaries
-    return structures
+    if knary == 1:
+        return unaries
+    elif knary == 2:
+        return unaries + binaries
+    else:
+        return unaries + binaries + ternaries
+    

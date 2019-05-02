@@ -462,7 +462,7 @@ class Crystal(object):
 
     @property
     def reportline(self):
-        line = [self.title , self.results["energyF"], self.results["energyF"]]
+        line = [self.title , self.results["energyF"], self.results["fEnth"]]
         lineWrite = '{:35s}  {:9.4f}   {:9.4f}'
         
         for i in self.concentrations:

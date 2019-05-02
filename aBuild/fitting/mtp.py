@@ -111,8 +111,11 @@ class MTP(object):
 
     def train(self,executeParams, potential="pot.mtp", tSet="train.cfg",buildJob = True):
 
-        mlpCommand = 'mlp train {} {}'.format(potential,tSet)
         if buildJob:
+            if executeParams["ntasks"] > 1:
+                mlpCommand = 'mpirun -n ' + executeParams["ntasks"] + ' mlp train {} {}'.format(potential,tSet)
+            else:
+                mlpCommand = 'mlp train {} {}'.format(potential,tSet)
             mljob = Job(executeParams,path.join(self.root,"fitting","mtp"),mlpCommand)
             with chdir(path.join(self.root,"fitting/mtp")):
                 print('Building job file')

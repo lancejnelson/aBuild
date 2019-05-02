@@ -37,6 +37,7 @@ class dataset:
         from aBuild.jobs import Job
         from random import randrange
         from aBuild.utility import chdir
+        from os import remove, path
 
         #        from crystal import Crystal
         from os import path
@@ -68,6 +69,8 @@ class dataset:
                 poscarpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["lattice"],rStruct))
                 thisCrystal = Crystal(poscarpath, systemSpecies = systemSpecies) #title = ' '.join([self.enumDicts[index]["lattice"]," str #: {}"]).format(rStruct)
                 self.crystals.append(thisCrystal)
+                delpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["lattice"],rStruct))
+                remove(delpath)
 
     # Sometimes an entire dataset is stored in one file.  I'd like to extract each crystal from the file to 
     # create a list of crystal objects
@@ -241,11 +244,24 @@ class dataset:
         with open('dataReport_' + self.calculator + '.txt', 'w') as f:
             f.write(self.calculator + ' REPORT\n')
             f.write(str(datetime.datetime.now()) + '\n')
-            f.write("# S. Number               F. Enthalpy                Conc.     S. Energy.   E(A)    E(B)   A atoms      B atoms\n")
+            f.write("{:35s} {:14s}{:14s}{:12s}{:10s}{:9s}".format("Title"," T. Energy","F. Energy","Conc.",self.crystals[0].species[0] + "-atoms",self.crystals[0].species[1] + "-atoms\n"))
             f.write('------------------------------------------------------------------------------------------------------------------\n')
             for crystal in self.crystals:
                 f.write(crystal.reportline)
 
+    def cHull(self):
+        from scipy.spatial import ConvexHull
+
+        with open('dataReport_VASP.txt','r') as f:
+            lines = f.readlines()
+
+        del lines[0:4]
+        data = [[float(x.split()[-4]),float(x.split()[-5] )] for x in lines]
+        #data = [[i.results["fEnth"],i.concentrations[0]] for x in self.crystals]
+
+        hull = ConvexHull(data)
+
+        
 
 
 

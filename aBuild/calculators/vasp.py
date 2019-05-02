@@ -109,7 +109,7 @@ class VASP:
 
                 ''' Check how long since the last file write.  If it was recent
                      then we're probably running.'''
-                if (ctime - time) < 600:
+                if (ctime - time) < 60:
                     return 'running'
 
                     ''' If it's been a while since the last write, we've probably finished
@@ -145,6 +145,8 @@ class VASP:
                         return 'error'
                     if finalenergyline != []  and abs( float(finalenergyline[0].split()[-2]) ) > 1000:
                         return 'error'
+            else:
+                    folderstat = 'not started'
                     
                         
             if output:
@@ -153,8 +155,6 @@ class VASP:
                         return 'warning'
 
 
-            else:
-                folderstat = 'not started'
 
                 
         return folderstat
@@ -276,8 +276,12 @@ class VASP:
                 self.crystal.results["species"] = self.POTCAR.species
                 if abs(self.crystal.results["energyF"]) > 1000:
                     self.crystal.results["warning"] = True
-                # self.crystal.results["fEnth"] = self.formationEnergy
+                if 'pure' not in self.directory:
+                    self.crystal.results["fEnth"] = self.formationEnergy
+                else:
+                    self.crystal.results["fEnth"] = 0
         else:
+            print(self.status(), 'not reading results')
             self.crystal.results = None
             msg.info("Unable to extract necessary information from directory! ({})".format(self.directory))
     
@@ -286,10 +290,18 @@ class VASP:
             self.crystal.results = {}
         self.crystal.results[key] = item
 
-#    @property
-#    def formationEnergy(self):
-#        pureA
+    @property
+    def formationEnergy(self):
+        pures = []
+        for i in range(self.crystal.nTypes):
+            pureDir = path.join(path.split(self.directory)[0], 'pure' + self.crystal.species[i])
+            pureVASP = VASP(pureDir,self.crystal.species)
+            pureVASP.read_results()
+            pures.append(pureVASP)
+
         
+        formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
+        return formationEnergy
         
 class POTCAR:
 
