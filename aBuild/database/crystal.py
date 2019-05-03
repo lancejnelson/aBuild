@@ -450,8 +450,9 @@ class Crystal(object):
             self.basis = array([list(map(float, b.strip().split()[0:3])) for b in lines.Bv])
             self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
             self.latpar = float(lines.latpar.split()[0])
-            if self.latpar == 1.0:
+            if self.latpar == 1.0:# or self.latpar < 0:
                 self.latpar = None
+            #print(self.latpar, 'lat par read in')
             self.coordsys = lines.coordsys
 #            self.title  = lines.label
             self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
@@ -509,12 +510,14 @@ class Crystal(object):
         nAtoms = int(lines[2].split()[0])
         latDict = {}
         self.lattice = array([list(map(float,x.split())) for x in lines[4:7]])
-        self.basis = array([list(map(float,x.split()[2:])) for x in lines[8:8 + nAtoms]])
+        self.basis = array([list(map(float,x.split()[2:5])) for x in lines[8:8 + nAtoms]])
         self.nAtoms = len(self.basis)
         self.coordsys = 'C'
         atoms = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
-        self.atom_counts = array([ atoms.count(x) for x in range(3)])
-        self.title = ' '.join(lines[7 + nAtoms + 2].split()[2:4])
+        self.atom_counts = array([ atoms.count(x) for x in range(max(atoms)+1)])
+        print(self.atom_counts)
+        self.title = ' '.join(lines[-3].split()[2:4])
+        print(self.title,'TITLE')
         self.latpar = None
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')

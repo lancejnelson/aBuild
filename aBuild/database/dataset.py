@@ -10,6 +10,7 @@ class dataset:
         from aBuild.calculators.vasp import VASP
 
         self.calculator = calculator
+        self.species = systemSpecies
         
         if isinstance(dset,list):
             
@@ -24,9 +25,8 @@ class dataset:
             elif isinstance(dset[0],str):
                 self.init_paths(dset,systemSpecies)
         elif isinstance(dset, str):
-           self.init_file(dset,systemSpecies,lFormat)
+           self.init_file(dset,lFormat)
 
-        self.species = systemSpecies
         self.root = root
 
     # Used to be called 'buildFoldersFromEnum
@@ -74,25 +74,37 @@ class dataset:
 
     # Sometimes an entire dataset is stored in one file.  I'd like to extract each crystal from the file to 
     # create a list of crystal objects
-    def init_file(self,datafile,systemSpecies,linesformat):
-        from aBuild.database.crystal import Crystal
-        possibleFiles = {'new_training.cfg':'mlpadd','train.cfg': 'mlptrain','structures.in':'ce'}
+    def init_file(self,datafile,linesformat):
+        from os import path
+        handler = {'new_training.cfg':lambda file: self._init_mlpadd(file),'train.cfg': 'mlptrain','structures.in':'ce','dataReport_VASP.txt': lambda file: self._init_dataReport(file)}
         #selectedFile = path.join(self.root,'new_training.cfg')
 
+        handler[path.split(datafile)[-1]](datafile)
+
+    def _init_dataReport(self,datafile):
+        with open(datafile,'r') as f:
+            lines = f.readlines()
+
+        del lines[:4]
+        self.formationenergies = [ float(x.split()[-5]) for x in lines]
+        self.concs = [ float(x.split()[-4]) for x in lines]
+        
+    def _init_mlpadd(self,datafile):
+        from aBuild.database.crystal import Crystal
         with open(datafile,'r') as f:
             lines = f.readlines()
 
         self.crystals = []
         nCrystals = 0
         for index,line in enumerate(lines):
-            
+            print(index)
             if line == 'BEGIN_CFG\n':
                 #                nCrystals += 1
                 #if numOfStructs is not 'all' and (nCrystals < start or nCrystals > start + numOfStructs):
                 #    continue
                 nAtoms = int(lines[index+2].split()[0])
-                structlines = lines[index:index + 11 + nAtoms]
-                thisCrystal = Crystal(structlines,systemSpecies,lFormat = linesformat)
+                structlines = lines[index:index + 18 + nAtoms]
+                thisCrystal = Crystal(structlines,self.species,lFormat = 'mlpselect')
                 self.crystals.append(thisCrystal)
 
 
@@ -249,18 +261,30 @@ class dataset:
             for crystal in self.crystals:
                 f.write(crystal.reportline)
 
-    def cHull(self):
+    def generateConvexHullPlot(self):
         from scipy.spatial import ConvexHull
+        from numpy import array
+        from matplotlib import pyplot
+        #with open('dataReport_VASP.txt','r') as f:
+        #    lines = f.readlines()
 
-        with open('dataReport_VASP.txt','r') as f:
-            lines = f.readlines()
-
-        del lines[0:4]
-        data = [[float(x.split()[-4]),float(x.split()[-5] )] for x in lines]
+        #del lines[0:4]
+        #data = [[float(x.split()[-4]),float(x.split()[-5] )] for x in lines]
         #data = [[i.results["fEnth"],i.concentrations[0]] for x in self.crystals]
-
+        data = array([[self.concs[i],self.formationenergies[i]] for i in range(len(self.formationenergies))])
+        print(data,'data')
         hull = ConvexHull(data)
+        pyplot.plot(self.concs,self.formationenergies,'r+')
+        plotConcs = []
+        plotEnergies = []
+#        pyplot.plot(data[hull.vertices,0], data[hull.vertices,1],'b-',lw = 2)
 
+        for vertex in hull.vertices:
+            if self.formationenergies[vertex] <= 0:
+                plotConcs.append(data[vertex,0])
+                plotEnergies.append(data[vertex,1])
+        pyplot.plot(plotConcs,plotEnergies,'k-')
+        pyplot.savefig('chull.png')
         
 
 

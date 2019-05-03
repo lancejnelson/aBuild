@@ -131,8 +131,6 @@ class MTP(object):
         from subprocess import Popen
         from os import waitpid, rename,path
         
-        print('renaming Trained.mtp_ to pot.mtp')
-        rename(path.join(self.root,'Trained.mtp_'),path.join(self.root,'pot.mtp'))
         mlpCommand = 'mlp calc-grade pot.mtp train.cfg train.cfg temp1.cfg'
 
         print('Running calc-grade')
@@ -157,4 +155,19 @@ class MTP(object):
                 child=Popen(mlpCommand, shell=True, executable="/bin/bash")
                 waitpid(child.pid, 0)
 
+    def select_add(self,executeParams,buildJob = True):
+        from subprocess import Popen
+        from os import waitpid, rename,path
+        
+        mlpCommand = 'mlp select-add pot.mtp train.cfg candidate.cfg new_training.cfg'
+
+        if buildJob:
+            mljob = Job(executeParams,path.join(self.root,"fitting","mtp"),mlpCommand)
+            with chdir(path.join(self.root,"fitting/mtp")):
+                print('Building job file')
+                mljob.write_jobfile()
+        else:
+            with chdir(self.root):
+                child=Popen(mlpCommand, shell=True, executable="/bin/bash")
+                waitpid(child.pid, 0)
                 #    def select_add(self,executeParams

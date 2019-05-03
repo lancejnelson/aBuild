@@ -162,7 +162,11 @@ class Controller(object):
         from aBuild.jobs import Job
 
         from aBuild.database.dataset import dataset
-        
+
+
+        # 1. Pull all VASP data and compile into file train.cfg
+        # 2. Copy/Build a blank potential file called pot.mtp
+        # 3. Build a submission script
 
         trainingRoot = path.join(self.root, 'training_set')
         with chdir(trainingRoot):
@@ -178,6 +182,7 @@ class Controller(object):
         fittingRoot = path.join(self.root,'fitting','mtp')
         thisMTP = MTP(fittingRoot,settings = self.fitting)
         thisMTP.write_blank_pot(self.knary)
+
         with open(path.join(fittingRoot,'train.cfg'),'a+') as f:
             for crystal in trainingSet.crystals:
                 if crystal.results["warning"]:
@@ -196,20 +201,103 @@ class Controller(object):
 
     # Build files needed to run the relaxation. Lots of structures. Need to write as crystals
     # are generated to save memory
-    def setup_relax_select_input(self):
+    def setup_relax_input(self,freshStart = False):
         from os import remove,path
-        from aBuild.enumeration import Enumerate
-        from aBuild.database.crystal import Crystal
         from aBuild.fitting.mtp import MTP
-        from aBuild.utility import unpackProtos,getAllPerms,getProtoPaths
         from glob import glob
 
         self.dataset = "gss"
+
+
+        # 1.  If to-relax.cfg does not exit, build it.  This
+        #     takes a while because we are putting a bunch of
+        #     structures in there.
+        # 2.  If to-relax.cfg does exist (iteration > 1), then
+        #     copy unrelaxed.cfg from previous iteration to to-relax.cfg
+        #     Note that there may be many unrelaxed.cfg_# from the parallel run
+        # 3.  Copy Trained.mtp to pot.mtp in preparation for the relaxation
+        # 4.  Build a relax.ini from template if it's not already there.
+        # 5.  Run calc-grade
+        # 6.  Build a submission script.
+        fittingRoot = path.join(self.root,'fitting','mtp')
+        filePath = path.join(fittingRoot,'to-relax.cfg')
+        unrelaxedfilePath = path.join(fittingRoot,'unrelaxed.cfg')
+
+        torelax = path.isfile(filePath)
+        unrelaxed = path.isfile()
+
+        # 1.
+        if not torelax:  #This must be the first iteration
+            self.build_ToRelax()
+
+        # 2.
+        else: # What iteration is it?
+            if freshStart:
+                remove(filePath)
+                self.build_ToRelax()
+            elif unrelaxed:  #Iteration must be > 1
+                unrelaxedFiles = glob(path.join(fittingRoot,"unrelaxed.cfg_*"))
+                cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
+                remove(unrelaxedFiles)
+            else:
+                msg.fatal("Not sure what to do!  to-relax.cfg is present but I can't find any unrelaxed.cfg from previous iteration")
+        #elif path.isfile(filePath):  # Iteration # must be > 1
+        #        rename(path.join(self.root,'fitting/mtp')
         
 
-        #        rename(path.join(self.root,'fitting/mtp')
+        # 3.
+        print('renaming Trained.mtp to pot.mtp')
+        rename(path.join(fittingRoot,'Trained.mtp'),path.join(self.root,'pot.mtp'))
+        fittingRoot = path.join(self.root,'fitting','mtp')
+        thisMTP = MTP(fittingRoot,settings = self.fitting)
+        # 4.
+        thisMTP.write_relaxin()
+        # 5.
+        thisMTP.calc_grade()
+        # 6.
+        thisMTP.relax(self.fitting["execution"])
+
+
+
+        #        trainingSet = dataset(enumspecs = self.enumDicts,root = self.root,species = self.species,calculator = self.calculator)
+        #trainingSet.build_relax_select_input()
+
+    def setup_select_input(self):
+        from os import path,remove
+        from glob import glob
+        from aBuild.utility import cat
+
+        # 1. Concatenate all of the candidate.cfg_# into one candidate.cfg
+        #    and remove all of the other ones.
+        # 2. Concatenate all of the relaxed.cfg_# into one file.  This file should
+        #    get bigger and bigger with each iteration (Hopefully), but we don't ever
+        #    want to delete one of these files.
+        # 3. Build a submission script.
+
         fittingRoot = path.join(self.root,'fitting','mtp')
         
+        # 1.
+        candFiles = glob(path.join(fittingRoot,"candidate.cfg_*"))
+        cat(candFiles,path.join(fittingRoot,"candidate.cfg"))
+        remove(candFiles)
+
+        # 2.
+        thisItrelaxedFilesl = glob(path.join(fittingRoot,"relaxed.cfg_*"))
+        allRelaxedFiles = glob(path.join(fittingRoot,"relaxed.cfg*"))
+        cat(allRelaxedFiles,path.join(fittingRoot,"relaxed.cfg"))
+        remove(thisItrelaxedFiles)
+
+        # 3.
+        thisMTP = MTP(fittingRoot)
+        thisMTP.select_add(self.fitting["execution"])
+        
+    def build_ToRelax(self):
+        from aBuild.enumeration import Enumerate
+        from aBuild.utility import unpackProtos,getAllPerms,getProtoPaths
+        from aBuild.database.crystal import Crystal
+        from os import remove,path
+        print('Building to-relax.cfg')
+        fittingRoot = path.join(self.root,'fitting','mtp')
         for ilat  in range(self.nEnums):
             lat = self.enumDicts[ilat]["lattice"]
             
@@ -239,17 +327,6 @@ class Controller(object):
 
                     delpath = path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct))
                     remove(delpath)
-                
-        fittingRoot = path.join(self.root,'fitting','mtp')
-        thisMTP = MTP(fittingRoot,settings = self.fitting)
-        thisMTP.calc_grade()
-        thisMTP.write_relaxin()
-
-
-
-        #        trainingSet = dataset(enumspecs = self.enumDicts,root = self.root,species = self.species,calculator = self.calculator)
-        #trainingSet.build_relax_select_input()
-
 
     def augmentTraining(self):
         from os import path
@@ -316,3 +393,14 @@ class Controller(object):
             trainingSet = dataset(dirs,self.species,calculator = 'VASP')
             print('here')
             trainingSet.writeReport()
+
+    def generateConvexHull(self):
+        from os import path
+        from aBuild.database.dataset import dataset
+        dataFile = path.join(self.root,'dataReport_VASP.txt')
+        if not path.isfile(dataFile):
+            self.gatherResults()
+
+        data = dataset(dataFile,self.species)
+        data.generateConvexHullPlot()
+            
