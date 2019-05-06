@@ -14,7 +14,7 @@ class Job:
             self.arrayJob = False
 
 
-    def write_jobfile(self):
+    def write_jobfile(self,target):
 
 
         from jinja2 import Environment, PackageLoader  # Package for building files from a template
@@ -26,7 +26,7 @@ class Job:
 #        else:
 #            template = env.get_template("run_mtp_ml.sh")
 
-        target = 'jobscript.sh'
+#        target = 'jobscript.sh'
         with open(target,'w') as f:
             f.write(template.render(**self.jobSettings))
 

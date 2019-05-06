@@ -221,10 +221,10 @@ class Controller(object):
         # 6.  Build a submission script.
         fittingRoot = path.join(self.root,'fitting','mtp')
         filePath = path.join(fittingRoot,'to-relax.cfg')
-        unrelaxedfilePath = path.join(fittingRoot,'unrelaxed.cfg')
+        #unrelaxedfilePath = path.join(fittingRoot,'unrelaxed.cfg')
 
         torelax = path.isfile(filePath)
-        unrelaxed = path.isfile()
+        #unrelaxed = path.isfile(unrelaxedfilePath)
 
         # 1.
         if not torelax:  #This must be the first iteration
@@ -235,19 +235,26 @@ class Controller(object):
             if freshStart:
                 remove(filePath)
                 self.build_ToRelax()
-            elif unrelaxed:  #Iteration must be > 1
-                unrelaxedFiles = glob(path.join(fittingRoot,"unrelaxed.cfg_*"))
-                cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
-                remove(unrelaxedFiles)
-            else:
-                msg.fatal("Not sure what to do!  to-relax.cfg is present but I can't find any unrelaxed.cfg from previous iteration")
+         #   elif unrelaxed:  #Iteration must be > 1
+         ##       unrelaxedFiles = glob(path.join(fittingRoot,"unrelaxed.cfg_*"))
+          ##      cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
+           #     remove(unrelaxedFiles)
+            else: #"to-relax.cfg is present and I don't wanta  fresh start.  Don't do anything."
+                msg.info("to-relax.cfg found and you told me you don't want to start fresh.  Proceeding with the to-relax.cfg that's there.")
         #elif path.isfile(filePath):  # Iteration # must be > 1
         #        rename(path.join(self.root,'fitting/mtp')
         
 
         # 3.
-        print('renaming Trained.mtp to pot.mtp')
-        rename(path.join(fittingRoot,'Trained.mtp'),path.join(self.root,'pot.mtp'))
+        try:
+            print('renaming Trained.mtp to pot.mtp')
+            rename(path.join(fittingRoot,'Trained.mtp'),path.join(fittingRoot,'pot.mtp'))
+        except:
+            if path.isfile(path.join(fittingRoot,'pot.mtp')):
+                msg.info('It looks like you have already copied Trained.mtp -> pot.mtp previously')
+            else:
+                msg.fatal("Can't find a pot.mtp or a Trained.mtp.  Problems")
+                          
         fittingRoot = path.join(self.root,'fitting','mtp')
         thisMTP = MTP(fittingRoot,settings = self.fitting)
         # 4.
@@ -264,30 +271,74 @@ class Controller(object):
 
     def setup_select_input(self):
         from os import path,remove
+        from shutil import copy
         from glob import glob
         from aBuild.utility import cat
-
+        from aBuild.fitting.mtp import MTP
         # 1. Concatenate all of the candidate.cfg_# into one candidate.cfg
         #    and remove all of the other ones.
-        # 2. Concatenate all of the relaxed.cfg_# into one file.  This file should
+        # 2. Concatenate all of the selection.log_* files into one file.
+        # 3. Concatenate all of the relaxed.cfg_# into one file.  This file should
         #    get bigger and bigger with each iteration (Hopefully), but we don't ever
         #    want to delete one of these files.
-        # 3. Build a submission script.
+        # 4. Build a submission script.
 
         fittingRoot = path.join(self.root,'fitting','mtp')
+
+        with open(path.join(fittingRoot,'iteration'),'r') as f:
+            lines = f.readlines()
+        iteration = int(lines[0].split()[0])
+
+        with open(path.join(fittingRoot,'iteration'),'w') as f:
+            f.write("{:d}\n".format(iteration + 1))
         
         # 1.
         candFiles = glob(path.join(fittingRoot,"candidate.cfg_*"))
-        cat(candFiles,path.join(fittingRoot,"candidate.cfg"))
-        remove(candFiles)
-
+        cat(candFiles,path.join(fittingRoot,"candidate.temp"))
+        for file in candFiles:
+            remove(file)
+        copy( path.join(fittingRoot,'candidate.temp'), path.join(fittingRoot,"candidate_iteration_" + str(iteration) + ".cfg") )
+        copy( path.join(fittingRoot,'candidate.temp'), path.join(fittingRoot,"candidate.cfg" ) )
+        remove(path.join(fittingRoot,'candidate.temp'))
+        
         # 2.
-        thisItrelaxedFilesl = glob(path.join(fittingRoot,"relaxed.cfg_*"))
-        allRelaxedFiles = glob(path.join(fittingRoot,"relaxed.cfg*"))
-        cat(allRelaxedFiles,path.join(fittingRoot,"relaxed.cfg"))
-        remove(thisItrelaxedFiles)
+        logFiles = glob(path.join(fittingRoot,"selection.log_*"))
+        cat(logFiles,path.join(fittingRoot,"selection.temp"))
+        for file in logFiles:
+            remove(file)
+        copy( path.join(fittingRoot,'selection.temp'), path.join(fittingRoot,"selection_iteration_" + str(iteration) + ".log") )
+#        copy( path.join(fittingRoot,'selection.temp'), path.join(fittingRoot,"selection.log" ) )
+        remove(path.join(fittingRoot,'selection.temp'))
 
+        
+        
         # 3.
+        relaxedFiles = glob(path.join(fittingRoot,"relaxed.cfg_*"))
+        cat(relaxedFiles,path.join(fittingRoot,"relaxed.temp"))
+        for file in relaxedFiles:
+            remove(file)
+        copy( path.join(fittingRoot,'relaxed.temp'), path.join(fittingRoot,"relaxed_iteration_" + str(iteration) + ".cfg") )
+#        copy( path.join(fittingRoot,'relaxed.temp'), path.join(fittingRoot,"relaxed.cfg" ) )
+        remove(path.join(fittingRoot,'relaxed.temp'))
+
+            # 3.
+        unrelaxedFiles = glob(path.join(fittingRoot,"unrelaxed.cfg_*"))
+        cat(unrelaxedFiles,path.join(fittingRoot,"unrelaxed.temp"))
+        for file in unrelaxedFiles:
+            remove(file)
+        copy( path.join(fittingRoot,'unrelaxed.temp'), path.join(fittingRoot,"unrelaxed_iteration_" + str(iteration) + ".cfg") )
+#        copy( path.join(fittingRoot,'relaxed.temp'), path.join(fittingRoot,"relaxed.cfg" ) )
+        remove(path.join(fittingRoot,'unrelaxed.temp'))
+
+        relaxLogFiles = glob(path.join(fittingRoot,"relax_log.txt_*"))
+        cat(relaxLogFiles,path.join(fittingRoot,"relax_log.temp"))
+        for file in relaxLogFiles:
+            remove(file)
+        copy( path.join(fittingRoot,'relax_log.temp'), path.join(fittingRoot,"relax_log_iteration_" + str(iteration) + ".txt") )
+#        copy( path.join(fittingRoot,'relaxed.temp'), path.join(fittingRoot,"relaxed.cfg" ) )
+        remove(path.join(fittingRoot,'relax_log.temp'))
+
+        # 4.
         thisMTP = MTP(fittingRoot)
         thisMTP.select_add(self.fitting["execution"])
         

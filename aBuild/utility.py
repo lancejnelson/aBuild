@@ -71,11 +71,13 @@ def cat(files, target):
         target (str): name/path of the output file that will include all of the
           combined files.
     """
+
     with open(target, 'w') as outfile:
         for fname in files:
             with open(fname) as infile:
                 for line in infile:
                     outfile.write(line)
+
 
 def getAllPerms(knary,justCyclic=False):
     if justCyclic:

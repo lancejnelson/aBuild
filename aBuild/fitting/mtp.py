@@ -24,7 +24,7 @@ class MTP(object):
         relaxDict["energy_weight"] = 1.0
         relaxDict["force_weight"] = 0.001
         relaxDict["stress_weight"] = 0.0001
-        relaxDict["extrap_threshold"] = 2.0
+        relaxDict["extrap_threshold"] = 5.0
         relaxDict["threshold_break"] = 10.0
         relaxDict["efs_ignore"] = 'FALSE'
         return relaxDict
@@ -110,16 +110,17 @@ class MTP(object):
 
 
     def train(self,executeParams, potential="pot.mtp", tSet="train.cfg",buildJob = True):
-
+        from aBuild.jobs import Job
+        from os import path
         if buildJob:
             if executeParams["ntasks"] > 1:
                 mlpCommand = 'mpirun -n ' + executeParams["ntasks"] + ' mlp train {} {}'.format(potential,tSet)
             else:
                 mlpCommand = 'mlp train {} {}'.format(potential,tSet)
-            mljob = Job(executeParams,path.join(self.root,"fitting","mtp"),mlpCommand)
-            with chdir(path.join(self.root,"fitting/mtp")):
+            mljob = Job(executeParams,self.root,mlpCommand)
+            with chdir(self.root):
                 print('Building job file')
-                mljob.write_jobfile()
+                mljob.write_jobfile('jobscript_train.sh')
         else:
             with chdir(self.root):
                 child=Popen(mlpCommand, shell=True, executable="/bin/bash")
@@ -140,16 +141,17 @@ class MTP(object):
         print('Done')
 
     def relax(self,executeParams,buildJob = True):
+        from aBuild.jobs import Job
         from subprocess import Popen
         from os import waitpid, rename,path
         
-        mlpCommand = 'mlp relax relax.ini --cfg-filename = to-relax.cfg --save-relaxed=relaxed.cfg --save-unrelaxed=unrelaxed.cfg --log=relax_log.txt'
+        mlpCommand = 'mlp relax relax.ini --cfg-filename=to-relax.cfg --save-relaxed=relaxed.cfg --save-unrelaxed=unrelaxed.cfg --log=relax_log.txt'
 
         if buildJob:
-            mljob = Job(executeParams,path.join(self.root,"fitting","mtp"),mlpCommand)
-            with chdir(path.join(self.root,"fitting/mtp")):
+            mljob = Job(executeParams,self.root,mlpCommand)
+            with chdir(self.root):
                 print('Building job file')
-                mljob.write_jobfile()
+                mljob.write_jobfile('jobscript_relax.sh')
         else:
             with chdir(self.root):
                 child=Popen(mlpCommand, shell=True, executable="/bin/bash")
@@ -158,14 +160,14 @@ class MTP(object):
     def select_add(self,executeParams,buildJob = True):
         from subprocess import Popen
         from os import waitpid, rename,path
-        
+        from aBuild.jobs import Job
         mlpCommand = 'mlp select-add pot.mtp train.cfg candidate.cfg new_training.cfg'
 
         if buildJob:
-            mljob = Job(executeParams,path.join(self.root,"fitting","mtp"),mlpCommand)
-            with chdir(path.join(self.root,"fitting/mtp")):
+            mljob = Job(executeParams,self.root,mlpCommand)
+            with chdir(self.root):
                 print('Building job file')
-                mljob.write_jobfile()
+                mljob.write_jobfile('jobscript_select.sh')
         else:
             with chdir(self.root):
                 child=Popen(mlpCommand, shell=True, executable="/bin/bash")
