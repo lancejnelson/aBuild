@@ -63,7 +63,7 @@ def unpackProtos():
             tar.close()
 
 
-def cat(files, target):
+def cat(files, target,remove = False):
     """Combines the specified list of files into a single file.
 
     Args:

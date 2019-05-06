@@ -515,9 +515,8 @@ class Crystal(object):
         self.coordsys = 'C'
         atoms = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
         self.atom_counts = array([ atoms.count(x) for x in range(max(atoms)+1)])
-        print(self.atom_counts)
-        self.title = ' '.join(lines[-3].split()[2:4])
-        print(self.title,'TITLE')
+        self.title = ' '.join(lines[-4].split()[2:])
+        
         self.latpar = None
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')

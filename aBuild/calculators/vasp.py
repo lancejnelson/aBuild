@@ -109,7 +109,7 @@ class VASP:
 
                 ''' Check how long since the last file write.  If it was recent
                      then we're probably running.'''
-                if (ctime - time) < 60:
+                if (ctime - time) < 600:
                     return 'running'
 
                     ''' If it's been a while since the last write, we've probably finished
@@ -136,15 +136,15 @@ class VASP:
                         folderstat = 'done'
                     elif finalenergyline == []:
                         return 'error'
-                    elif abs( float(finalenergyline[0].split()[-2]) ) > 1000:
-                        return 'error'
+              #      elif abs( float(finalenergyline[0].split()[-2]) ) > 1000:
+              #          return 'error'
                     else:
                         return 'idk'
 
                     if finalenergyline == []:
                         return 'error'
-                    if finalenergyline != []  and abs( float(finalenergyline[0].split()[-2]) ) > 1000:
-                        return 'error'
+               #     if finalenergyline != []  and abs( float(finalenergyline[0].split()[-2]) ) > 1000:
+                #        return 'error'
             else:
                     folderstat = 'not started'
                     

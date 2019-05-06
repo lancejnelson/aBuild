@@ -105,6 +105,9 @@ class dataset:
                 nAtoms = int(lines[index+2].split()[0])
                 structlines = lines[index:index + 18 + nAtoms]
                 thisCrystal = Crystal(structlines,self.species,lFormat = 'mlpselect')
+                print(thisCrystal.title, "HERE")
+                import sys
+                sys.exit()
                 self.crystals.append(thisCrystal)
 
 
@@ -160,45 +163,43 @@ class dataset:
                 os.mkdir(buildpath)
                 print('Made path:',buildpath)
         configIndex = startPoint = self.starting_point(buildpath)
-        for crystal in self.crystals:
-            if 'vasp' in calculator["active"]:
-                vaspspecs = {"incar":calculator["vasp"]["incar"],"kpoints":calculator["vasp"]["kpoints"], 'potcar':calculator["vasp"]["potcars"],"crystal":crystal}
-                thisVASP = VASP(vaspspecs,self.species)
-            if 'lammps' in calculator["active"]:
-                print('lammps triggered')
-                specsDict = {"crystal":crystal, "potential":calculator["lammps"]["potential"]}
-                thisLAMMPS = LAMMPS(specsDict,self.species)
-                
-            if 'qe' in calculator["active"]:
-                print('espresso triggered')
-                specsDict = {"crystal":crystal, "pseudopotentials":calculator["qe"]["pseudopotentials"]}
-                thisESPRESSO = ESPRESSO(specsDict,self.species)
-            
 
-                
+        lookupCalc = {'vasp': lambda specs: VASP(specs,self.species),
+                  'qe': lambda specs: ESPRESSO(specs,self.species),
+                      'lammps': lambda specs: LAMMPS(specs,self.species)}
+
+        lookupSpecs = {'vasp': lambda crystal: {"incar":calculator["vasp"]["incar"],"kpoints":calculator["vasp"]["kpoints"], 'potcar':calculator["vasp"]["potcars"],"crystal":crystal},
+                  'qe': lambda crystal : {"crystal":crystal, "pseudopotentials":calculator["qe"]["pseudopotentials"]},
+                      'lammps': lambda crystal: {"crystal":crystal, "potential":calculator["lammps"]["potential"]} }
+
+        lookupBuild = {'vasp': lambda obj: obj.buildFolder(runGetKPoints = runGetKpoints),
+                  'qe': lambda obj:obj.buildFolder(),
+                      'lammps': lambda obj: obj.buildFolder()} 
+
+        for crystal in self.crystals:
+            # Initialize the calculation object
+            thisCalc = lookupCalc[calculator["active"]](lookupSpecs[calculator["active"]](crystal))
+                                  
+            # Build the path
             runpath = path.join(buildpath,foldername + ".{}".format(configIndex) )
             if not path.isdir(runpath):
                 os.mkdir(runpath)
             else:
-                msg.fatal("I'm gonna write over top of a current directory. ({})  I think I'll stop instead.".format(runpath)) 
+                msg.fatal("I'm gonna write over top of a current directory. ({})  I think I'll stop instead.".format(runpath))
+
+            # Change the directory and build the folder
             print("Building folder for structure: {}".format(crystal.title) )
             with chdir(runpath):
-                if 'vasp' in calculator["active"]:
-                    print('building for vasp')
-                    thisVASP.buildFolder(runGetKPoints = runGetKpoints)
-                if 'lammps' in calculator["active"]:
-                    print('building for lammps')
-                    thisLAMMPS.buildFolder()
-                if 'qe' in calculator["active"]:
-                    print('building for espresso')
-                    thisESPRESSO.buildFolder()
+                lookupBuild[calculator["active"]](thisCalc)
             configIndex += 1
 
+
+        # Build the submission script
         exdir = path.join(buildpath,'E.')
         mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = startPoint,arrayEnd = configIndex - 1)
         with chdir(buildpath):
             print('Building job file')
-            mljob.write_jobfile()
+            mljob.write_jobfile('jobscript_vasp.sh')
 
 
 
