@@ -8,7 +8,7 @@ script_options = {
            "help": "Enumerate derivative superstructures."},
     "-write": {"action": "store_true",
            "help": "Build VASP folders."},
-    "-build": {"action": "store_true",
+    "-setup_train": {"action": "store_true",
            "help": "Build input files for fitting."},
     "-report": {"action": "store_true",
            "help": "Build a report of the results of the calculations."},
@@ -27,10 +27,13 @@ script_options = {
                 "help": ("Determines status of the databases "
                          "based on presence of completed VASP "
                          "directories. Sanity check before `-x`.")},
-    "-setup": {"action": "store_true",
+    "-setup_relax": {"action": "store_true",
                 "help": ("Setup input files for an mlp relax run "
                          "based on presence of completed VASP "
                          "directories. Sanity check before `-x`.")},
+    "-setup_select_add": {"action": "store_true",
+                "help": ("Setup input files for an mlp select-add run "
+                             "directories. Sanity check before `-x`.")},
     "-add": {"action": "store_true",
                 "help": ("Setup input files for an mlp relax run "
                          "based on presence of completed VASP "
@@ -90,12 +93,14 @@ def run(args):
         cdb.enumerate('trainingset')
     if args.write:
         cdb.setup_training_set(runGetKpoints = args.rgk)
-    if args.build:
+    if args.setup_train:
         cdb.setup_training_input()
     if args.status:
         cdb.statusReport()
-    if args.setup:
-        cdb.setup_relax_select_input()
+    if args.setup_relax:
+        cdb.setup_relax_input()
+    if args.setup_select_add:
+        cdb.setup_select_input()
     if args.add:
         cdb.augmentTraining()
     if args.report:
