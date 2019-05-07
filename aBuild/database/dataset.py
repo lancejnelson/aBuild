@@ -98,16 +98,20 @@ class dataset:
         nCrystals = 0
         for index,line in enumerate(lines):
             print(index)
-            if line == 'BEGIN_CFG\n':
+            if 'BEGIN' in line:
+                indexStart = index
+            elif 'END' in line:
+                indexEnd = index
+                structlines = lines[indexStart:indexEnd + 1]
+            
+                
                 #                nCrystals += 1
                 #if numOfStructs is not 'all' and (nCrystals < start or nCrystals > start + numOfStructs):
                 #    continue
-                nAtoms = int(lines[index+2].split()[0])
-                structlines = lines[index:index + 18 + nAtoms]
+#                nAtoms = int(lines[index+2].split()[0])
+#                structlines = lines[index:index + 18 + nAtoms]
+                print(structlines, 'struct lines')
                 thisCrystal = Crystal(structlines,self.species,lFormat = 'mlpselect')
-                print(thisCrystal.title, "HERE")
-                import sys
-                sys.exit()
                 self.crystals.append(thisCrystal)
 
 

@@ -11,6 +11,24 @@ latpars ={"H": 3.75,"He": 3.57,"Li": 3.49,"Be": 2.29,"B": 8.73,"C": 3.57,"N": 4.
           "Ta": 3.31,"W": 3.16,"Re": 2.76,"Os": 2.64,"Ir": 3.84,"Pt": 3.92,"Au": 4.08,
           "Hg": 2.99,"Tl": 3.46,"Pb": 4.95,"Bi": 4.75}
 
+volumeperatom = {"Au": latpars["Au"]**3/4, "Ag": latpars["Ag"]**3/4}
+
+def vegardsVolume(elements,atom_counts,volume):
+    nAtoms = sum(atom_counts)
+    concentrations = [x/nAtoms for x in atom_counts]
+    print(nAtoms, 'nAtoms')
+    print(atom_counts,'atomC COunts')
+    print(concentrations, 'concentrations')
+    
+    avgVolume = sum([volumeperatom[elements[x]] *concentrations[x] for x in range(len(atom_counts))] )
+    print(avgVolume, 'I want the volume per atom to be equal to this')
+    print(volumeperatom[elements[0]], 'correct volume for pure A')
+    print(volumeperatom[elements[1]], 'correct volume for pure B')
+    print(volume/nAtoms, 'Current value for volume per atoms')
+    print(elements,'elements')
+    return ( avgVolume/(volume/nAtoms) )**(1/3)
+
+    
 def vegard(elements, concs):
     """Interpolates the lattice parameters for the given alloy system using
     vegard's law.
