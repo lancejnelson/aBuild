@@ -438,12 +438,12 @@ class Crystal(object):
         if sorted(self.species,reverse = True) != self.species:
             msg.fatal("Your species are not in reverse alphabetical order... OK?")
 
-        print(self.volume,' volume')
-        print(self.lattice,' lattice vecs')
+#        print(self.volume,' volume')
+#        print(self.lattice,' lattice vecs')
         self.latpar = data.vegardsVolume(self.species,self.atom_counts,self.volume)
         previously = data.vegard(self.species,[float(x)/self.nAtoms for x in self.atom_counts])
-        print("setting latpar to {}. Previously it was set to {}".format(self.latpar,previously) )
-        print('-------------------------')
+#        print("setting latpar to {}. Previously it was set to {}".format(self.latpar,previously) )
+#        print('-------------------------')
 #        import sys
 #        sys.exit()
     def from_poscar(self,filepath):

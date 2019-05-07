@@ -404,4 +404,4 @@ class MTP(object):
         remove(path.join(self.root,'relax_log.temp'))
 
         # 6.  Build job submission script.
-        self.select_add(self.fitting["execution"])
+        self.select_add(self.settings["execution"])
