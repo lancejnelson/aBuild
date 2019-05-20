@@ -105,8 +105,11 @@ class MTP(object):
         template = env.get_template(self.settings['pot']) #"pot.mtp"
 
         target = path.join(self.root, "pot.mtp")
-        with open(target,'w') as f:
-            f.write(template.render(**settings))
+        if not path.isfile(target):
+            with open(target,'w') as f:
+                f.write(template.render(**settings))
+        else:
+            msg.info("pot.mtp is already present. I'm not going to build a blank one.")
 
 
     def train(self,executeParams, potential="pot.mtp", tSet="train.cfg",buildJob = True):

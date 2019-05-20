@@ -182,15 +182,13 @@ class Controller(object):
         from os import path
         from glob import glob
         from aBuild.calculators.vasp import VASP
-
         trainingRoot = path.join(self.root, 'training_set')
         with chdir(trainingRoot):
             enumdirs = glob("E.*")
             activedirs = glob("A.*")
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-
-        stat = {'done':[],'running':[], 'not started': [], 'error':[], 'not setup':[],'warning':[],'idk':[]}
+        stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[]}
         for dir in dirs:
             thisVASP = VASP(dir,self.species)
             stat[thisVASP.status()].append(dir.split('/')[-1])
@@ -203,8 +201,8 @@ class Controller(object):
         msg.info(' '.join(stat['not started']))
         msg.info('Not Setup')
         msg.info(' '.join(stat['not setup']))
-        msg.info('Errors')
-        msg.info(' '.join(stat['error']))
+        msg.info('Too Long')
+        msg.info(' '.join(stat['too long']))
         msg.info('Warnings')
         msg.info(' '.join(stat['warning']))
         msg.info('Not sure')

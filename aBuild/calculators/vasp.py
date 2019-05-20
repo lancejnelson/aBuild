@@ -78,8 +78,10 @@ class VASP:
         from time import time
         from aBuild.utility import grep
         import os
-
+        fTagStatic = '------------------------ aborting loop because EDIFF is reached ----------------------------------------\n'
+        fTagRelax = ' writing wavefunctions'
         ctime = time()
+        print('checking directory {}'.format(self.directory))
         with chdir(self.directory):
             outcar = self._check_file_exists('OUTCAR')
             incar = self._check_file_exists('INCAR')
@@ -102,51 +104,49 @@ class VASP:
                     either running, finished successfully, or finished
                     with errors!
                 '''
-            elif outcar:
-                time = path.getmtime('OUTCAR')
+            elif outcar: # OUTCAR present
                 sgrcon = grep('OUTCAR','SGRCON')
                 finalenergyline = grep('OUTCAR','free  energy')
-
-                ''' Check how long since the last file write.  If it was recent
-                     then we're probably running.'''
-                if (ctime - time) < 600:
-                    return 'running'
-
-                    ''' If it's been a while since the last write, we've probably finished
-                        the calculation.  Let's proceed to error/warning check. 
-                    '''
-                else:
-
-                    ''' Let's first check to see if this is a static
-                        calculation or a relaxation because the tag 
-                        to check for is different.'''
-                    if incar:
-                        relax = grep('INCAR','IBRION')
-                        if '-1' not in relax or relax is []:
+                ''' Let's first check to see if this is a static
+                calculation or a relaxation because the tag 
+                to check for is different.'''
+                if incar:
+                    relax = grep('INCAR','IBRION')
+                    if '-1' not in relax or relax is []:
                             static = True
-                        else:
-                            static = False
-
-                    ''' Check finish tag for static calc'''
-                    if static and self._check_tag_exists('OUTCAR',
-                                        '------------------------ aborting loop because EDIFF is reached ----------------------------------------\n'):
-                        folderstat = 'done'
-                        ''' Check finish tag for relax calc'''
-                    elif self._check_tag_exists('OUTCAR',' writing wavefunctions'):
-                        folderstat = 'done'
-                    elif finalenergyline == []:
-                        return 'error'
-              #      elif abs( float(finalenergyline[0].split()[-2]) ) > 1000:
-              #          return 'error'
                     else:
+                            static = False
+                else:
+                    return 'not setup'
+                    
+                ''' Check finish tag for static calc'''
+                if static and self._check_tag_exists('OUTCAR', fTagStatic):  #Looks like it's done
+                    if finalenergyline != []:  #Let's double check
+                        return 'done'
+                    else:  # Apparently not,  why?
                         return 'idk'
-
-                    if finalenergyline == []:
+                    
+                    ''' Check finish tag for relax calc'''
+                elif self._check_tag_exists('OUTCAR',fTagRelax): #Looks like it's done
+                    if finalenergyline != []:  # Let's double check
+                        return 'done'
+                    else:  # Apparently not, why?
+                        return 'idk'
+                else:
+                        
+                    ''' Check how long since the last file write.  If it was recent
+                     then we're probably running.'''
+                    time = path.getmtime('OUTCAR')
+                    if (ctime - time) < 1800:  # If the OUTCAR was modified in the last 30 minutes
+                                              # the calculation is probably still running.
+                        return 'running'
+                    elif sgrcon:
                         return 'error'
-               #     if finalenergyline != []  and abs( float(finalenergyline[0].split()[-2]) ) > 1000:
-                #        return 'error'
+                    else:
+                        return 'too long'
+                    
             else:
-                    folderstat = 'not started'
+                    return 'not started'
                     
                         
             if output:
