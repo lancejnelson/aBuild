@@ -62,7 +62,7 @@ def vegardsVolume(elements,atom_counts,volume):
     avgVolume = sum([element_volume[elements[x]] *concentrations[x] for x in range(nTypes)] )
     # Calculate lattice parameter
     mine = ( avgVolume/(volume/nAtoms) )**(1/3.)
-    print("My approach: {}.  Wiley's approach: {}".format(mine,wiley))
+#    print("My approach: {}.  Wiley's approach: {}".format(mine,wiley))
     return wiley
 
 

@@ -104,17 +104,21 @@ class MTP(object):
         print(self.settings)
         template = env.get_template(self.settings['pot']) #"pot.mtp"
 
-        target = path.join(self.root, "pot.mtp")
-        with open(target,'w') as f:
-            f.write(template.render(**settings))
 
+
+        target = path.join(self.root, "pot.mtp")
+        if not path.isfile(target):
+            with open(target,'w') as f:
+                f.write(template.render(**settings))
+        else:
+            msg.info("File pot.mtp exists already.  You must have copied over Trained.pot previously")
 
     def train(self,executeParams, potential="pot.mtp", tSet="train.cfg",buildJob = True):
         from aBuild.jobs import Job
         from os import path
         if buildJob:
             if executeParams["ntasks"] > 1:
-                mlpCommand = 'mpirun -n ' + executeParams["ntasks"] + ' mlp train {} {}'.format(potential,tSet)
+                mlpCommand = 'mpirun -n ' + str(executeParams["ntasks"]) + ' mlp train {} {}'.format(potential,tSet)
             else:
                 mlpCommand = 'mlp train {} {}'.format(potential,tSet)
             mljob = Job(executeParams,self.root,mlpCommand)
@@ -198,6 +202,7 @@ class MTP(object):
 
         with chdir(trainingRoot):
             enumdirs = glob("E.*")
+           # activedirs = []
             activedirs = glob("A.*")
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
@@ -233,10 +238,10 @@ class MTP(object):
     #                   We just run this interactively because it doesn't take too long.
     #               4- A job submission script is generated.
     def setup_relax(self,enumDicts,species,freshStart = False):
-        from os import remove,path
+        from os import remove,path,rename
         from aBuild.fitting.mtp import MTP
         from glob import glob
-
+        from shutil import copy
         self.dataset = "gss"
 
 
@@ -271,6 +276,7 @@ class MTP(object):
           ##      cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
            #     remove(unrelaxedFiles)
             else: #"to-relax.cfg is present and I don't wanta  fresh start.  Don't do anything."
+                #self.build_ToRelax(enumDicts,species)
                 msg.info("to-relax.cfg found and you told me to not start fresh.  Proceeding with the to-relax.cfg that's there.")
         #elif path.isfile(filePath):  # Iteration # must be > 1
         #        rename(path.join(self.root,'fitting/mtp')
@@ -278,13 +284,15 @@ class MTP(object):
 
         # 3.
         try:
-            print('renaming Trained.mtp to pot.mtp')
-            rename(path.join(self.root,'Trained.mtp'),path.join(self.root,'pot.mtp'))
+            print('copying Trained.mtp to pot.mtp')
+            copy(path.join(self.root,'Trained.mtp_'),path.join(self.root,'pot.mtp'))
         except:
-            if path.isfile(path.join(self.root,'pot.mtp')):
-                msg.info('It looks like you have already copied Trained.mtp -> pot.mtp previously')
-            else:
-                msg.fatal("Can't find a pot.mtp or a Trained.mtp.  Problems")
+            if not path.isfile(path.join(self.root,'Trained.mtp_')):
+                msg.fatal("Can't find Trained.mtp_ .You don't appear to have a trained potential ready" )
+           # if path.isfile(path.join(self.root,'pot.mtp')):
+           #     msg.info('It looks like you have already copied Trained.mtp -> pot.mtp previously')
+       #     else:
+       #         msg.fatal("Can't find a pot.mtp or a Trained.mtp.  Problems")
                           
         # 4.
         self.write_relaxin()
@@ -320,11 +328,19 @@ class MTP(object):
                     scrambleOrder = getAllPerms(knary,justCyclic = 'uniqueUnaries' in struct)
                     for scramble in scrambleOrder:
                         thisCrystal = Crystal(struct,species)
+
                         #print("Atom counts before scramble {}".format(thisCrystal.atom_counts))
                         thisCrystal.scrambleAtoms(scramble)
-                        #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
-                        with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
-                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ) )
+                       
+                        print(thisCrystal.title)
+
+                        mindist = thisCrystal.minDist
+                        print(mindist, "CHECK HERE")
+                        if mindist > 2 and thisCrystal.nAtoms < 60:
+                            print('Adding to file')
+        #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
+                            with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
+                                f.writelines('\n'.join(thisCrystal.lines('mtprelax') ) )
                 
             else:
                 enumLattice = Enumerate(enumDicts[ilat])

@@ -109,7 +109,7 @@ class VASP:
 
                 ''' Check how long since the last file write.  If it was recent
                      then we're probably running.'''
-                if (ctime - time) < 600:
+                if (ctime - time) < 60:
                     return 'running'
 
                     ''' If it's been a while since the last write, we've probably finished

@@ -117,7 +117,7 @@ class Crystal(object):
             msg.fatal('I have to know what kind of atoms are in the crystal')
         if self.latpar is None and self.species is not None:
             self.set_latpar()
-        
+        #self.validateCrystal()        
 
 
     #  Sometimes a crystal object will be instantiated and the number of atom types is not consistent with
@@ -223,7 +223,52 @@ class Crystal(object):
         to a file."""
         return '\n'.join(self.lines())
 
+    def validateCrystal(self):
+        from numpy import array,any
+        from math import floor
+       # print(self.Bv_direct, 'D')
+        if any(array(self.Bv_direct) > 1) or any(array(self.Bv_direct) < 0):
+           # print(self.atomDist, 'before')
+           # print(self.Bv_direct, 'before')
+           # print(self.Bv_cartesian, 'before')
+           # print(self.latpar, 'latpar')
+            basis_inside = []
+            for j in self.Bv_direct:
+                new_point = []
+                for i in j:
+                    if i < 0.0 or i > 1.0:
+                        new_point.append(i - floor(i))
+                    elif i == 1.0:
+                        new_point.append(0.0)
+                    else:
+                        new_point.append(i)
+                basis_inside.append(new_point)
+            self.basis = basis_inside
+            self.coordsys = 'D'
+           # print(self.Bv_direct, 'after')
+           # print(self.Bv_cartesian, 'after')
+           # print(self.atomDist, 'after')
+#            print("let's fix this")
+#            print(self.Bv_direct)
+#            msg.fatal('Atom found outside the unit cell')
+            msg.info('Crystal is fixed')
+        else:
+            msg.info("Crystal didn't need fixing")
 
+    @property
+    def minDist(self):
+        from numpy import array,dot,min,einsum,add,roll,column_stack
+        from numpy.linalg import norm
+        from itertools import product
+        offsets = array([x for x in product(range(-5,5),repeat = 3)])
+        neighborsDirect  = array([self.Bv_direct + array(x) for x in offsets])
+        neighborsCartesian = einsum('abc,cd',neighborsDirect,self.latpar * self.lattice)
+        neighborsCartesian.resize(len(offsets),3)
+
+        rolledNeighbors = array([roll(neighborsCartesian,x,axis = 0) for x in range(len(neighborsCartesian))])
+        distances = norm(rolledNeighbors[:,0] - rolledNeighbors,axis = 2)
+        print(self.latpar, 'latpar')
+        return min(distances[distances > 1e-5])
 
     @property
     def recip_Lv(self):
@@ -256,6 +301,58 @@ class Crystal(object):
             return [nsum([B[i]*self.lattice[i]*self.latpar for i in [0,1,2]], axis=0) for B in self.basis]
         else:
             return self.basis
+
+
+    def findNeighbors(self):
+        self.neighbors = []
+        for basisidx, basis in enumerate(self.basis):
+            self.neighbors.append(self.singleAtomNeighbors(basisidx))
+        if len(self.neighbors) != self.nAtoms:
+            import sys
+            sys.exit("Something isn't right")
+
+            
+    def singleAtomNeighbors(self,whichAtom):
+        from numpy import array
+        from numpy.linalg import norm
+        from itertools import product
+        offsets = product(range(-4,4),repeat = 3)
+        neighbors = [self.Bv_direct +array(x) for x in offsets]
+        print(neighbors)
+        import sys
+        sys.exit()
+
+        atomCoord = self.Bv_cartesian[whichAtom]
+        print("Finding neighbors for atom {}".format(atomCoord))
+        neighbors = []
+        for idx,basis in enumerate(self.Bv_cartesian):
+            for i in range(-5,5):
+                for j in range(-5,5):
+                    for k in range(-5,5):
+                        lv = self.latpar * (i * self.lattice[0] + j * self.lattice[1] + k * self.lattice[2])
+                        if abs(norm(basis + lv - atomCoord)) > 1e-3: 
+                            neighbors.append(basis + lv)
+       
+        return neighbors
+
+    @property
+    def Bv_direct(self):
+        from numpy import sum as nsum, array
+        if self.coordsys[0].upper() == 'D':
+            return self.basis
+        print('getting direct vectors')
+        from numpy.linalg import inv
+        from numpy import transpose, array, equal
+        inv_lattice = inv(self.lattice.transpose())        
+        d_space_vector = [ list(dot(inv_lattice, array(b))) for b in self.basis ]
+
+        output = []
+        for i in d_space_vector:
+            if i not in output:
+                output.append(_chop_all(epsilon, i))
+
+        return output
+
 
     @property
     def lattice_lines_LAMMPS(self):
@@ -441,7 +538,7 @@ class Crystal(object):
 #        print(self.volume,' volume')
 #        print(self.lattice,' lattice vecs')
         self.latpar = data.vegardsVolume(self.species,self.atom_counts,self.volume)
-        previously = data.vegard(self.species,[float(x)/self.nAtoms for x in self.atom_counts])
+#        previously = data.vegard(self.species,[float(x)/self.nAtoms for x in self.atom_counts])
 #        print("setting latpar to {}. Previously it was set to {}".format(self.latpar,previously) )
 #        print('-------------------------')
 #        import sys
@@ -462,7 +559,7 @@ class Crystal(object):
             self.basis = array([list(map(float, b.strip().split()[0:3])) for b in lines.Bv])
             self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
             self.latpar = float(lines.latpar.split()[0])
-            if self.latpar == 1.0:# or self.latpar < 0:
+            if self.latpar == 1.0 or self.latpar < 0:
                 self.latpar = None
             #print(self.latpar, 'lat par read in')
             self.coordsys = lines.coordsys
@@ -527,13 +624,14 @@ class Crystal(object):
         self.coordsys = 'C'
         atoms = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
         self.atom_counts = array([ atoms.count(x) for x in range(max(atoms)+1)])
-        self.title = ' '.join(lines[-2].split()[2:])
+        titleindex = ['conf_id' in x for x in lines].index(True)
+        self.title = ' '.join(lines[titleindex].split()[2:])
         
-        self.latpar = None
+        self.latpar = 1.0
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')
-        self.set_latpar()
-        self.lattice = self.lattice / self.latpar
+       # self.set_latpar()
+       # self.lattice = self.lattice / self.latpar
         
     @staticmethod  # Needs fixed!!!
     def fromEnum(enumDict,structNum):
