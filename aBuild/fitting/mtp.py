@@ -105,7 +105,6 @@ class MTP(object):
         template = env.get_template(self.settings['pot']) #"pot.mtp"
 
 
-
         target = path.join(self.root, "pot.mtp")
         if not path.isfile(target):
             with open(target,'w') as f:

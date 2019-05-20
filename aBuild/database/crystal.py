@@ -630,8 +630,13 @@ class Crystal(object):
         self.latpar = 1.0
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')
-       # self.set_latpar()
-       # self.lattice = self.lattice / self.latpar
+#        self.set_latpar()
+        self.latpar = 1.0  # MLP files are formatted with no lattice parameter.  It's
+                           # already built into the lattice vectors.
+        print(self.latpar, 'latpar')
+#        self.lattice = self.lattice / self.latpar  # I think I did this to ensure that the lattice
+                                                    # vectors didn't change but I know that the lattice
+                                                    # parameter is just 1.0 for MLP formatting.
         
     @staticmethod  # Needs fixed!!!
     def fromEnum(enumDict,structNum):
