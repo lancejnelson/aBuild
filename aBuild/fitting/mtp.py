@@ -110,7 +110,7 @@ class MTP(object):
             with open(target,'w') as f:
                 f.write(template.render(**settings))
         else:
-            msg.info("File pot.mtp exists already.  You must have copied over Trained.pot previously")
+            msg.info("File pot.mtp exists already.  You must have copied over Trained.pot_ previously")
 
     def train(self,executeParams, potential="pot.mtp", tSet="train.cfg",buildJob = True):
         from aBuild.jobs import Job
@@ -148,9 +148,13 @@ class MTP(object):
         from subprocess import Popen
         from os import waitpid, rename,path
         
-        mlpCommand = 'mlp relax relax.ini --cfg-filename=to-relax.cfg --save-relaxed=relaxed.cfg --save-unrelaxed=unrelaxed.cfg --log=relax_log.txt'
+        baseCommand = 'mlp relax relax.ini --cfg-filename=to-relax.cfg --save-relaxed=relaxed.cfg --save-unrelaxed=unrelaxed.cfg --log=relax_log.txt'
 
         if buildJob:
+            if executeParams["ntasks"] > 1:
+                mlpCommand = 'mpirun -n ' + str(executeParams["ntasks"]) + ' ' + baseCommand
+            else:
+                mlpCommand = baseCommand
             mljob = Job(executeParams,self.root,mlpCommand)
             with chdir(self.root):
                 print('Building job file')
@@ -164,9 +168,13 @@ class MTP(object):
         from subprocess import Popen
         from os import waitpid, rename,path
         from aBuild.jobs import Job
-        mlpCommand = 'mlp select-add pot.mtp train.cfg candidate.cfg new_training.cfg'
+        baseCommand = 'mlp select-add pot.mtp train.cfg candidate.cfg new_training.cfg'
 
         if buildJob:
+            if executeParams["ntasks"] > 1:
+                mlpCommand = 'mpirun -n ' + str(executeParams["ntasks"]) + ' ' + baseCommand
+            else:
+                mlpCommand = baseCommand
             mljob = Job(executeParams,self.root,mlpCommand)
             with chdir(self.root):
                 print('Building job file')
@@ -275,7 +283,7 @@ class MTP(object):
           ##      cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
            #     remove(unrelaxedFiles)
             else: #"to-relax.cfg is present and I don't wanta  fresh start.  Don't do anything."
-                #self.build_ToRelax(enumDicts,species)
+            #    self.build_ToRelax(enumDicts,species)
                 msg.info("to-relax.cfg found and you told me to not start fresh.  Proceeding with the to-relax.cfg that's there.")
         #elif path.isfile(filePath):  # Iteration # must be > 1
         #        rename(path.join(self.root,'fitting/mtp')
@@ -287,8 +295,10 @@ class MTP(object):
             copy(path.join(self.root,'Trained.mtp_'),path.join(self.root,'pot.mtp'))
         except:
             if not path.isfile(path.join(self.root,'Trained.mtp_')):
-                msg.fatal("Can't find Trained.mtp_ .You don't appear to have a trained potential ready" )
-           # if path.isfile(path.join(self.root,'pot.mtp')):
+                msg.info("Can't find Trained.mtp_ .You don't appear to have a trained potential ready" )
+            else:
+                msg.info("Not sure why the copy of Trained.mtp_ -> pot.mtp failed.  You should investigate")
+                # if path.isfile(path.join(self.root,'pot.mtp')):
            #     msg.info('It looks like you have already copied Trained.mtp -> pot.mtp previously')
        #     else:
        #         msg.fatal("Can't find a pot.mtp or a Trained.mtp.  Problems")
@@ -332,9 +342,9 @@ class MTP(object):
                         thisCrystal.scrambleAtoms(scramble)
                        
                         print(thisCrystal.title)
-
                         mindist = thisCrystal.minDist
-                        print(mindist, "CHECK HERE")
+                        print(mindist, "actual min dist<-----------------------------------------------------------------------------------------------------")
+                        print(thisCrystal.appMinDist, 'appropriate min distance')
                         if mindist > 2 and thisCrystal.nAtoms < 60:
                             print('Adding to file')
         #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
@@ -347,6 +357,8 @@ class MTP(object):
                     print("Lattice",lat, "structure:",struct)
                     enumLattice.generatePOSCAR(struct) 
                     thisCrystal = Crystal(path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct)),species)
+#                    print(thisCrystal.appMinDist,' approp Min Dist')
+ #                   print(thisCrystal.minDist, 'actual min dist')
                     with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
                         f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
 
@@ -376,47 +388,69 @@ class MTP(object):
         #    want to delete one of these files.
         # 4. Build a submission script.
 
-#        fittingRoot = path.join(self.root,'fitting','mtp')
+        # Find what iteration we are currently on.
+        candIterationFiles = glob(path.join(self.root,"candidate_iteration_*"))
+        relaxedIterationFiles = glob(path.join(self.root,"relaxed_iteration_*"))
+        unrelaxedIterationFiles = glob(path.join(self.root,"unrelaxed_iteration_*"))
+        if len(candIterationsFiles) != len(relaxedIterationFiles) or len(candIterationsFiles) != len(unrelaxedIterationFiles):
+            msg.fatal(" I can't figure out what iteration we're on based on the files present.  Have a look at all of the *_iteration_* files")
+        if candIterationFiles != []:
+            
+            iteration = len(candIterationFiles) + 1
+        else:
+            iteration = 1
 
-        with open(path.join(self.root,'iteration'),'r') as f:
-            lines = f.readlines()
-        iteration = int(lines[0].split()[0])
-
-        with open(path.join(self.root,'iteration'),'w') as f:
-            f.write("{:d}\n".format(iteration + 1))
-        
-        # 1. candidate.cfg_*
+            
+        # 1. Bring all of the candidate.cfg_* files together into one
         candFiles = glob(path.join(self.root,"candidate.cfg_*"))
-        cat(candFiles,path.join(self.root,"candidate.temp"),remove=True)
-        copy( path.join(self.root,'candidate.temp'), path.join(self.root,"candidate_iteration_" + str(iteration) + ".cfg") )
-        copy( path.join(self.root,'candidate.temp'), path.join(self.root,"candidate.cfg" ) )
-        remove(path.join(self.root,'candidate.temp'))
+        if candFiles != []:
+            cat(candFiles,path.join(self.root,"candidate.temp"),remove=True)
+        # Save a record
+            copy( path.join(self.root,'candidate.temp'), path.join(self.root,"candidate_iteration_" + str(iteration) + ".cfg") )
+        # Prepare to select, which needs this file.
+            copy( path.join(self.root,'candidate.temp'), path.join(self.root,"candidate.cfg" ) )
+            remove(path.join(self.root,'candidate.temp'))
+        else:
+            msg.info("Can't find candidate.cfg_* files to concatenate")
         
         # 2. selection.log_*
         logFiles = glob(path.join(self.root,"selection.log_*"))
-        cat(logFiles,path.join(self.root,"selection.temp"),remove=True)
-        copy( path.join(self.root,'selection.temp'), path.join(self.root,"selection_iteration_" + str(iteration) + ".log") )
-        remove(path.join(self.root,'selection.temp'))
-
+        if logFiles != []:
+            cat(logFiles,path.join(self.root,"selection.temp"),remove=True)
+            copy( path.join(self.root,'selection.temp'), path.join(self.root,"selection_iteration_" + str(iteration) + ".log") )
+            remove(path.join(self.root,'selection.temp'))
+        else:
+            msg.info("Can't find selection.log_* files to concatenate")
         
         
         # 3. relaxed.cfg_*
         relaxedFiles = glob(path.join(self.root,"relaxed.cfg_*"))
-        cat(relaxedFiles,path.join(self.root,"relaxed.temp"),remove=True)
-        copy( path.join(self.root,'relaxed.temp'), path.join(self.root,"relaxed_iteration_" + str(iteration) + ".cfg") )
-        remove(path.join(self.root,'relaxed.temp'))
+        if relaxedFiles != []:
+            cat(relaxedFiles,path.join(self.root,"relaxed.temp"),remove=True)
+            copy( path.join(self.root,'relaxed.temp'), path.join(self.root,"relaxed_iteration_" + str(iteration) + ".cfg") )
+            remove(path.join(self.root,'relaxed.temp'))
+        else:
+            msg.info("Can't find relaxed.cfg_* files to concatenate")
 
         # 4.  unrelaxed.cfg_*
         unrelaxedFiles = glob(path.join(self.root,"unrelaxed.cfg_*"))
-        cat(unrelaxedFiles,path.join(self.root,"unrelaxed.temp"),remove=True)
-        copy( path.join(self.root,'unrelaxed.temp'), path.join(self.root,"unrelaxed_iteration_" + str(iteration) + ".cfg") )
-        remove(path.join(self.root,'unrelaxed.temp'))
+        if unrelaxedFiles != []:
+            cat(unrelaxedFiles,path.join(self.root,"unrelaxed.temp"),remove=True)
+        # Save a record of this iteration.  May consider copying this file to to-relax.cfg next time we relax
+            copy( path.join(self.root,'unrelaxed.temp'), path.join(self.root,"unrelaxed_iteration_" + str(iteration) + ".cfg") )
+            remove(path.join(self.root,'unrelaxed.temp'))
+        else:
+            msg.info("Can't find unrelaxed.cfg_* files to concatenate")
 
         # 5. relax_log.txt_*
         relaxLogFiles = glob(path.join(self.root,"relax_log.txt_*"))
-        cat(relaxLogFiles,path.join(self.root,"relax_log.temp"),remove=True)
-        copy( path.join(self.root,'relax_log.temp'), path.join(self.root,"relax_log_iteration_" + str(iteration) + ".txt") )
-        remove(path.join(self.root,'relax_log.temp'))
+        if relaxLogFiles != []:
+            cat(relaxLogFiles,path.join(self.root,"relax_log.temp"),remove=True)
+            copy( path.join(self.root,'relax_log.temp'), path.join(self.root,"relax_log_iteration_" + str(iteration) + ".txt") )
+            remove(path.join(self.root,'relax_log.temp'))
+        else:
+            msg.info("Can't find relax_log.txt_* files to concatenate")
+
 
         # 6.  Build job submission script.
         self.select_add(self.settings["execution"])

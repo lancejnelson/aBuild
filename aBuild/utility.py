@@ -72,13 +72,16 @@ def cat(files, target,remove = False):
           combined files.
     """
     from os import remove
-
+    if files == []:
+        return
+    
     with open(target, 'w') as outfile:
         for fname in files:
             with open(fname) as infile:
                 for line in infile:
                     outfile.write(line)
-    for file in files:
+    if remov:
+        for file in files:
             remove(file)
     
 

@@ -223,15 +223,14 @@ class Crystal(object):
         to a file."""
         return '\n'.join(self.lines())
 
+    # Checks to see if any basis vectors in the crystal
+    # are outside of the first unit cell.  If they are, we
+    # map them back inside the first cell.
     def validateCrystal(self):
         from numpy import array,any
         from math import floor
        # print(self.Bv_direct, 'D')
         if any(array(self.Bv_direct) > 1) or any(array(self.Bv_direct) < 0):
-           # print(self.atomDist, 'before')
-           # print(self.Bv_direct, 'before')
-           # print(self.Bv_cartesian, 'before')
-           # print(self.latpar, 'latpar')
             basis_inside = []
             for j in self.Bv_direct:
                 new_point = []
@@ -245,31 +244,52 @@ class Crystal(object):
                 basis_inside.append(new_point)
             self.basis = basis_inside
             self.coordsys = 'D'
-           # print(self.Bv_direct, 'after')
-           # print(self.Bv_cartesian, 'after')
-           # print(self.atomDist, 'after')
-#            print("let's fix this")
-#            print(self.Bv_direct)
-#            msg.fatal('Atom found outside the unit cell')
             msg.info('Crystal is fixed')
         else:
             msg.info("Crystal didn't need fixing")
 
+    # Calculates the distances between all of the atoms and finds
+    # the minimum value from all of them.
     @property
     def minDist(self):
         from numpy import array,dot,min,einsum,add,roll,column_stack
         from numpy.linalg import norm
         from itertools import product
-        offsets = array([x for x in product(range(-5,5),repeat = 3)])
-        neighborsDirect  = array([self.Bv_direct + array(x) for x in offsets])
-        neighborsCartesian = einsum('abc,cd',neighborsDirect,self.latpar * self.lattice)
-        neighborsCartesian.resize(len(offsets),3)
 
+
+        # Need to make sure that all of the atoms are inside the first
+        # unit cell before we compile list of distances
+        self.validateCrystal()
+        
+        #  Calculate all possible shifts.  These are vectors of integers
+        # representing the amount of each lattice vector that we are going
+        # to add to each basis atom.  We only do combinations of (-1,0,1) because
+        # that should be enough to find all possible distances between atoms.
+        #  We're not trying to get all atoms out to some cutoff radius, we just want to
+        # make sure we get enough atoms in there to find the min separation.
+        offsets = array([x for x in product(range(-1,2),repeat = 3)])
+
+        # Now shift every basis atom by every shift previously calculated
+        neighborsDirect  = array([self.Bv_direct + array(x) for x in offsets])
+        #Convert list of atomic positions to cartesian coordinates
+        neighborsCartesian = einsum('abc,cd',neighborsDirect,self.latpar * self.lattice)
+        # Flatten the list down to a single list of position vectors
+        neighborsCartesian.resize(len(offsets)* self.nAtoms,3)
+
+        # Build a matrix where each row is a shifted version of atomic positions.
         rolledNeighbors = array([roll(neighborsCartesian,x,axis = 0) for x in range(len(neighborsCartesian))])
-        distances = norm(rolledNeighbors[:,0] - rolledNeighbors,axis = 2)
+        #Now we can just subtract the first row (unshifted) from all of the other rows
+        # and calculate the norm of each vector
+        distances = norm(rolledNeighbors[0,:,:] - rolledNeighbors,axis = 2)
         print(self.latpar, 'latpar')
+        # Return the min, excluding 0 distances.
         return min(distances[distances > 1e-5])
 
+    @property
+    def appMinDist(self):
+        from aBuild.calculators import data
+        return data.nnDistance(self.species,self.atom_counts)
+        
     @property
     def recip_Lv(self):
         if len(self.lattice) == 0:
@@ -304,36 +324,27 @@ class Crystal(object):
 
 
     def findNeighbors(self):
-        self.neighbors = []
-        for basisidx, basis in enumerate(self.basis):
-            self.neighbors.append(self.singleAtomNeighbors(basisidx))
-        if len(self.neighbors) != self.nAtoms:
-            import sys
-            sys.exit("Something isn't right")
-
-            
-    def singleAtomNeighbors(self,whichAtom):
-        from numpy import array
+        from numpy import array,dot,min,einsum,add,roll,column_stack,append,where,extract,argwhere,set_printoptions
         from numpy.linalg import norm
         from itertools import product
-        offsets = product(range(-4,4),repeat = 3)
-        neighbors = [self.Bv_direct +array(x) for x in offsets]
-        print(neighbors)
-        import sys
-        sys.exit()
 
-        atomCoord = self.Bv_cartesian[whichAtom]
-        print("Finding neighbors for atom {}".format(atomCoord))
-        neighbors = []
-        for idx,basis in enumerate(self.Bv_cartesian):
-            for i in range(-5,5):
-                for j in range(-5,5):
-                    for k in range(-5,5):
-                        lv = self.latpar * (i * self.lattice[0] + j * self.lattice[1] + k * self.lattice[2])
-                        if abs(norm(basis + lv - atomCoord)) > 1e-3: 
-                            neighbors.append(basis + lv)
-       
-        return neighbors
+        # Get all of the offsets to translate the basis vectors to equivalent
+        # positions
+        offsets = array([x for x in product(range(-4,4),repeat = 3)])
+
+        # Translate them (in direct coordinates)  Shape: nBasis x nOffset x nCoord (3)
+        neighborsDirect  = array([x + offsets for x in self.Bv_direct])
+        # Convert coordinates to cartesian
+        neighborsCartesian = einsum('abc,cd',neighborsDirect,self.latpar * self.lattice)
+        diffs = array([x  - neighborsCartesian for x in self.Bv_cartesian])
+        distances = norm(diffs, axis = 3)
+        keepIndices = argwhere(distances < self.rcut)
+
+        self.neighbors = [[] for x in self.atom_types]
+        for [centerAtom,neighborAtom,shift] in keepIndices:
+            self.neighbors[centerAtom].append([neighborsCartesian[neighborAtom,shift], self.atom_types[neighborAtom] ])
+        print(array(self.neighbors))
+
 
     @property
     def Bv_direct(self):

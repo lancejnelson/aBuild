@@ -94,13 +94,13 @@ def run(args):
     if args.write:
         cdb.setup_training_set(runGetKpoints = args.rgk)
     if args.setup_train:
-        cdb.setup_training_input()
+        cdb.setupHandler('mtp','setup_train')
     if args.status:
         cdb.statusReport()
     if args.setup_relax:
-        cdb.setup_relax_input()
+        cdb.setupHandler('mtp','setup_relax')
     if args.setup_select_add:
-        cdb.setup_select_input()
+        cdb.setupHandler('mtp','setup_select_add')
     if args.add:
         cdb.augmentTraining()
     if args.report:

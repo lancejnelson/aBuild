@@ -26,8 +26,26 @@ element_volume ={"H":37.2958,"He":32.1789,"Li":21.2543,"Be":8.49323,"B":7.24205,
 
 volumeperatom = {"Au": latpars["Au"]**3/4, "Ag": latpars["Ag"]**3/4, "Cu": latpars["Cu"]**3/4}
 
+crystalStructs = {"Au": "fcc", "Ag":"fcc", "Pt":"fcc","Cu":"fcc"}
 
-# This routine is to calculate the appropriate lattice
+
+def nnDistance(elements,atom_counts):
+    from numpy.linalg import norm
+    from numpy import array,dot
+
+    nAtoms = sum(atom_counts)
+    concentrations = array([x/nAtoms for x in atom_counts])
+    lattLookup = {"fcc":norm([0.5,0.5,0]), "bcc": norm([0.5,0.5,0.5])}
+
+    nnDist = array([latpars[x] * lattLookup[ crystalStructs[x] ] for x in elements])
+    average = dot(nnDist,concentrations)
+
+    print("nn distances", nnDist)
+    print(average, 'predicted nn dist for this crystal')
+    print(atom_counts,' atom counts')
+    return average
+
+    # This routine is to calculate the appropriate lattice
 # parameter for the crystal.  We do this by ensuring that
 # the volume per atom is right.  There are two ways: One is
 # the way I thought up, and the other is Wiley's way.  Wiley's
