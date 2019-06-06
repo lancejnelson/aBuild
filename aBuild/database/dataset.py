@@ -58,18 +58,24 @@ class dataset:
 
             # Loop to generate random structures for a given lattice type
             for i in range(eDict["nconfigs"]):
-                rStruct = randrange(1,enumController.nEnumStructs)
+                rStruct = 5#randrange(1,enumController.nEnumStructs)
                 print('Adding {} structure # {} to database'.format(eDict["lattice"],rStruct) )
                 with open('structNums','a+') as f:
-                    f.write(eDict["lattice"] + ' ' + str(rStruct) + '\n')
+                    f.write(eDict["name"] + ' ' + str(rStruct) + '\n')
                     #print("Building VASP folder for {} structure #: {}".format(eDict["lattice"],rStruct))
                 enumController.generatePOSCAR(rStruct)
 
                 
-                poscarpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["lattice"],rStruct))
+                poscarpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["name"],rStruct))
                 thisCrystal = Crystal(poscarpath, systemSpecies = systemSpecies) #title = ' '.join([self.enumDicts[index]["lattice"]," str #: {}"]).format(rStruct)
+               # print(thisCrystal.atom_counts, 'atom counts of primitive')
+               # print(thisCrystal.latpar)
+               # thisCrystal.getAFMPlanes([1,0,0])
+                thisCrystal.superPeriodics(5)
+                import sys
+                sys.exit()
                 self.crystals.append(thisCrystal)
-                delpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["lattice"],rStruct))
+                delpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["name"],rStruct))
                 remove(delpath)
 
     # Sometimes an entire dataset is stored in one file.  I'd like to extract each crystal from the file to 
@@ -125,7 +131,7 @@ class dataset:
         self.crystals = []
         for dirpath in paths:
             if self.calculator == 'VASP':
-                calc = VASP(dirpath,systemSpecies)
+                calc = VASP(dirpath,systemSpecies = systemSpecies)
                 calc.read_results()
 
             #Added for LAMMPS compatibility
@@ -143,8 +149,9 @@ class dataset:
         from aBuild.utility import chdir
 
         with chdir(folderpath):
-            dirs = glob('E.*')
-        prevCalcs = [int(x.split('.')[1])  for x in dirs]
+            dirsE = glob('E.*')
+            dirsA = glob('A.*')
+        prevCalcs = [int(x.split('.')[1])  for x in dirsE] + [int(x.split('.')[1])  for x in dirsA]
         prevCalcs.sort()
         if prevCalcs != []:
             return prevCalcs[-1] + 1
@@ -168,7 +175,7 @@ class dataset:
                 print('Made path:',buildpath)
         configIndex = startPoint = self.starting_point(buildpath)
 
-        lookupCalc = {'vasp': lambda specs: VASP(specs,self.species),
+        lookupCalc = {'vasp': lambda specs: VASP(specs),
                   'qe': lambda specs: ESPRESSO(specs,self.species),
                       'lammps': lambda specs: LAMMPS(specs,self.species)}
 
@@ -181,8 +188,11 @@ class dataset:
                       'lammps': lambda obj: obj.buildFolder()} 
 
         for crystal in self.crystals:
+            calculator[calculator["active"]]["crystal"] = crystal
+            calculator[calculator["active"]]["species"] = self.species
             # Initialize the calculation object
-            thisCalc = lookupCalc[calculator["active"]](lookupSpecs[calculator["active"]](crystal))
+            thisCalc = lookupCalc[calculator["active"]](calculator[calculator["active"]])
+#            thisCalc = lookupCalc[calculator["active"]](lookupSpecs[calculator["active"]](crystal))
                                   
             # Build the path
             runpath = path.join(buildpath,foldername + ".{}".format(configIndex) )

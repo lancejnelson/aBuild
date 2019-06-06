@@ -12,7 +12,7 @@ class Enumerate:
         from aBuild.database.crystal import Lattice
         self.root = specs["root"]
 
-        self.lattice = Lattice(specs["lattice"])
+        self.lattice = Lattice(specs)
         #        self._get_lattice(specs["lattice"])
         from os import path,makedirs
         if "Enum" not in self.root:

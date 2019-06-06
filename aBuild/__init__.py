@@ -106,6 +106,24 @@ class Controller(object):
 
     
     @property
+    def name(self):
+        if "name" in self.specs[self.dataset]:
+            savedNames = self.specs[self.dataset]["name"]
+            for idx,name in enumerate(savedNames):
+                if name is None:
+                    savedNames[idx] = self.specs[self.database]["lattice"][idx]
+            return savedNames#self.specs[self.dataset]["name"]
+        else:
+            return [None for k in range(self.nEnums)]
+        
+    @property
+    def coordsys(self):
+        if "coordys" in self.specs[self.dataset]:
+            return self.specs[self.dataset]["coordys"]
+        else:
+            return [None for k in range(self.nEnums)]
+
+    @property
     def siteRestrictions(self):
         if "siteRestrictions" in self.specs[self.dataset]:
             return self.specs[self.dataset]["siteRestrictions"]
@@ -123,6 +141,8 @@ class Controller(object):
             edict["nconfigs"] = self.nconfigs[i]
             edict["sizes"] = self.enumSizes[i]
             edict["site_res"] = self.siteRestrictions[i]
+            edict["coordsys"] = self.coordsys[i]
+            edict["name"] = self.name[i]
             edict["concs"] = self.concRestrictions[i]
             edict["root"] = self.root
             edict["eps"] = 1e-3
@@ -190,7 +210,7 @@ class Controller(object):
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
         stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[]}
         for dir in dirs:
-            thisVASP = VASP(dir,self.species)
+            thisVASP = VASP(dir,systemSpecies = self.species)
             stat[thisVASP.status()].append(dir.split('/')[-1])
             #            msg.info("Status of directory {} is {} ".format(dir,thisVASP.status()))
         msg.info('Done (' + str(len(stat['done'])) + ')')

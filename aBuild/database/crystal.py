@@ -2,6 +2,74 @@ from os import path
 from aBuild import msg
 import os
 import ase
+
+def convert_direct(lattice,vec):
+    from numpy import sum as nsum, array,dot
+    from numpy.linalg import inv
+    from numpy import transpose, array, equal
+    inv_lattice = inv(lattice.transpose())
+    d_space_vector = dot(inv_lattice, array(vec))
+
+    return d_space_vector
+
+def convert_cartesian(lattice,directVec):
+    from numpy import sum as nsum, array
+    return nsum([directVec[i]*lattice[i] for i in [0,1,2]], axis=0)
+
+
+def vec_in_list(vec,veclist):
+#    print("Considering if vector {} is in list {}".format(vec,veclist))
+#    print([abs(vec - x) for x in veclist], 'diffs')
+#    print([ all(abs(vec - x) < 1e-4) for x in veclist], 'check')
+    if any([ all(abs(vec - x) < 1e-4) for x in veclist]):
+        return True
+    else:
+        return False
+
+
+def map_into_cell(vec):
+    from math import floor
+    from numpy import array
+    new_point = []
+    for i in vec:
+        if i < 0.0 or i > 1.0:
+         #   print(i,' i')
+         #   print(floor(i),' floor')
+         #   print(i - floor(i),' result')
+            new_point.append(i - floor(i))
+        elif i == 1.0:
+            new_point.append(0.0)
+        else:
+            new_point.append(i)
+    return array(new_point)
+
+
+def _chop(epsilon, const, i, j):
+    """Sets the value of i[j] to exactly 'const' if its value already lies
+    within 'epsilon' of 'const'."""
+    if abs(const-i[j]) <= epsilon:
+        i[j] = float(const)
+
+def _chop_all(epsilon, i):
+    """Performs chop() on the expected values of +- 0, 0.5, 1 for each
+    element of i."""
+    for j in range(len(i)):
+        _chop(epsilon, 3, i, j)
+        _chop(epsilon, -3, i, j)
+        _chop(epsilon, 2, i, j)
+        _chop(epsilon, -2, i, j)
+        _chop(epsilon, 1, i, j)
+        _chop(epsilon, -1, i, j)
+        _chop(epsilon, 0, i, j)
+        _chop(epsilon, 0.5, i, j)
+        _chop(epsilon, -0.5, i, j)
+
+    return i
+
+
+
+
+
 class Lattice:
 
 
@@ -9,31 +77,32 @@ class Lattice:
 
         # If the input is a dictionary, I'm probably passing all of the needed
         # information (lv, bv, etc) in explicitly
-        if isinstance(specs, dict): 
+        print(specs,' specs')
+        if isinstance(specs["lattice"], list):
             self._init_dict(specs)
         # If the input is a string, I'm just specifying a canonical lattice and I
         # expect the class to infer all the details
-        elif isinstance(specs, str):
-            self._init_string(specs)
+        elif isinstance(specs["lattice"], str):
+            self._init_string(specs["lattice"])
 
         
 
-    def _init_dict(self,dict):
-
+    def _init_dict(self,enumdict):
+        import numpy as np
         necessaryItems = ['lattice','basis','coordsys','name']
 
-        if not all([x in dict for x in necessaryItems]):
+        if not all([x in enumdict for x in necessaryItems]):
             msg.fatal('Missing information when initializing Lattice object')
 
-        if len(dict["lattice"]) == 3 and len(dict["lattice"][0]) == 3 and np.linalg.det(dict["lattice"]) != 0:
-            self.lattice = dict["lattice"]
-            self.lattice_name = "custom"
+        if len(enumdict["lattice"]) == 3 and len(enumdict["lattice"][0]) == 3 and np.linalg.det(enumdict["lattice"]) != 0:
+            self.lattice = enumdict["lattice"]
+            self.lattice_name = enumdict["name"]
         else:
             msg.fatal("The lattice vectors must be a 3x3 matrix with the vectors as rows "
                         "and the vectors must be linearly independent.")
-        self.basis = dict["basis"]
-        self.coordsys = dict["coordsys"]
-        self.lattice_name = dict["name"]
+        self.basis = enumdict["basis"]
+        self.coordsys = enumdict["coordsys"]
+        self.lattice_name = enumdict["name"]
         self.nBasis = len(self.basis)
         
     def _init_string(self,string):
@@ -99,9 +168,12 @@ class Crystal(object):
             print('initializing from a list')
             self._init_lines(crystalSpecs, lFormat)
         self.results = None
+        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
+        self.atom_types = []
+        for i in typesList:
+            self.atom_types += i
         self.nAtoms = sum(self.atom_counts)
         self.nTypes = len(self.atom_counts)
-        
         if self.nAtoms != len(self.basis):
             msg.fatal("We have a problem")
 
@@ -117,8 +189,10 @@ class Crystal(object):
             msg.fatal('I have to know what kind of atoms are in the crystal')
         if self.latpar is None and self.species is not None:
             self.set_latpar()
-        #self.validateCrystal()        
-
+        #self.validateCrystal()
+        #Just testing this function out.
+#        print(self.atom_counts)
+#        self.superPeriodics(3)
 
     #  Sometimes a crystal object will be instantiated and the number of atom types is not consistent with
     # the order of the system being studied. For example, maybe you are studying a ternary system, but some 
@@ -208,13 +282,13 @@ class Crystal(object):
                 
 
             #        self.directory = directory
-        if len(self.species) != self.nTypes:
-            msg.fatal('The number of atom types provided ({})is not consistent with the number of atom types found in the poscar ({})'.format(species,self.lattice.nTypes))
-        try:
-            self.strN = int(self.title.split()[-1])
-        except:
-            self.strN = 0
-        self.calcResults = None
+#        if len(self.species) != self.nTypes:
+#            msg.fatal('The number of atom types provided ({})is not consistent with the number of atom types found in the poscar ({})'.format(species,self.lattice.nTypes))
+#        try:
+#            self.strN = int(self.title.split()[-1])
+#        except:
+#            self.strN = 0
+#        self.calcResults = None
 
 
 
@@ -247,6 +321,17 @@ class Crystal(object):
             msg.info('Crystal is fixed')
         else:
             msg.info("Crystal didn't need fixing")
+
+    @property
+    def orthogonality_defect(self):
+        from numpy.linalg import norm,det
+        from numpy import prod
+
+        return prod([norm(x) for x in self.lattice])/abs(det(self.lattice))
+    @property
+    def cell_volume(self):
+        from numpy import dot,cross
+        return abs(dot(cross(self.lattice[0],self.lattice[1]),self.lattice[2]))
 
     # Calculates the distances between all of the atoms and finds
     # the minimum value from all of them.
@@ -323,14 +408,14 @@ class Crystal(object):
             return self.basis
 
 
-    def findNeighbors(self):
-        from numpy import array,dot,min,einsum,add,roll,column_stack,append,where,extract,argwhere,set_printoptions
+    def findNeighbors(self,rcut):
+        from numpy import array,dot,min,einsum,add,roll,column_stack,append,where,extract,argwhere,set_printoptions,round
         from numpy.linalg import norm
         from itertools import product
 
         # Get all of the offsets to translate the basis vectors to equivalent
         # positions
-        offsets = array([x for x in product(range(-4,4),repeat = 3)])
+        offsets = array([x for x in product(range(-1,2),repeat = 3)])
 
         # Translate them (in direct coordinates)  Shape: nBasis x nOffset x nCoord (3)
         neighborsDirect  = array([x + offsets for x in self.Bv_direct])
@@ -338,14 +423,55 @@ class Crystal(object):
         neighborsCartesian = einsum('abc,cd',neighborsDirect,self.latpar * self.lattice)
         diffs = array([x  - neighborsCartesian for x in self.Bv_cartesian])
         distances = norm(diffs, axis = 3)
-        keepIndices = argwhere(distances < self.rcut)
-
+        keepIndices = argwhere(distances < rcut)
         self.neighbors = [[] for x in self.atom_types]
         for [centerAtom,neighborAtom,shift] in keepIndices:
-            self.neighbors[centerAtom].append([neighborsCartesian[neighborAtom,shift], self.atom_types[neighborAtom] ])
-        print(array(self.neighbors))
+            self.neighbors[centerAtom].append([round(neighborsCartesian[neighborAtom,shift],3), self.atom_types[neighborAtom],neighborAtom])
 
 
+    def getAFMPlanes(self,direction):
+        from numpy import sort,array,where,any
+        from numpy.linalg import norm
+
+        self.findNeighbors(0.75 * norm(self.latpar * self.lattice[0]+self.latpar * self.lattice[1]+self.latpar * self.lattice[2]) )
+        # Find all of the A atoms
+        aAtoms = where(array(self.atom_types) == 0)[0]
+        # Get position vectors for all of the A atoms,
+
+        locationAatoms = [basis[idy] for idx,basis in enumerate(self.neighbors) for idy,y in enumerate(basis) if basis[idy][2] in aAtoms]
+       # print(self.lattice, 'lattice')
+       # print(self.basis, 'basis')
+       # print(self.atom_counts, 'atom counts')
+       # for j in locationAatoms:
+       #     
+       #     print(j, 'location of A atoms')
+        
+        #for basis in self.neighbors:
+        #    for neigh in basis:
+        ##        if neigh[2] in aAtoms:
+         #           locationAatoms.append(neigh)
+        #locationAatoms = array([self.neighbors[x][y] for x in aAtoms for y in range(len(self.neighbors[x])) ])
+        # Build a dictionary, one list for every plane of atoms
+        planesDict = {}
+        for idx,atom in enumerate(locationAatoms):
+            if atom[0][0] not in planesDict:
+                planesDict[atom[0][0]] = [atom]
+            else:
+                planesDict[atom[0][0]].append(atom)
+        planes = list(planesDict.keys())
+        # Check to see if every plane contains the same basis atom.
+        foundPlanes = True
+        for plane in list(planesDict.keys()):
+            if any(abs(array([x[2] for x in planesDict[plane]]) - planesDict[plane][0][2]) > 1e-3):
+                return []
+
+        return [planesDict[x][0][2] for x in list(planesDict.keys())]
+       # if foundPlanes:
+       #     print([planesDict[x][0][2] for x in list(planesDict.keys())])
+       #     return [planesDict[x][0][2] for x in list(planesDict.keys())]
+       # else:
+       #     print("AFM doesn't work")
+       #     return []
     @property
     def Bv_direct(self):
         from numpy import sum as nsum, array
@@ -354,7 +480,7 @@ class Crystal(object):
         print('getting direct vectors')
         from numpy.linalg import inv
         from numpy import transpose, array, equal
-        inv_lattice = inv(self.lattice.transpose())        
+        inv_lattice = inv(self.lattice.transpose()*self.latpar)        
         d_space_vector = [ list(dot(inv_lattice, array(b))) for b in self.basis ]
 
         output = []
@@ -689,7 +815,110 @@ class Crystal(object):
         #lines.write(filepath,vasp=True)
     
 
+    def superPeriodics(self,size):
+        from numpy import dot,array,prod,einsum,any,all,copy
+        from numpy.linalg import inv,det,norm
+        from numpy import sum as nsum,transpose,matmul,cross
+        from itertools import product,combinations
+
+        crystals = []
+
+        # Generate all super-periodic lattice vectors
+        dimension = len(self.lattice)
+        multiplesOf = array([x for x in combinations([x for x in product(range(-2,3),repeat = dimension) if sum(abs(array(x))) !=0],dimension) ]) 
+
+        lattices = einsum('abc,dc->abd',multiplesOf,transpose(self.lattice))
+        keeps = [x  for x in lattices if abs(det(transpose(x))) > 1e-3 and abs(det(transpose(x)))/abs(det(transpose(self.lattice))) <= size]
         
+        # Done getting super-periodic lattice vectors.
+        
+        # Get all atoms by adding multiples of the parent lattice vectors
+        combs =  [x for x in product(range(-2,2),repeat = 3)]
+        latticeVecCombinations = einsum('ab,bd->ad', combs,self.lattice*self.latpar)
+        basisAtoms = [x + latticeVecCombinations for x in self.Bv_cartesian]
+        for lattice in keeps:
+            basDirect = [_chop_all(1e-4,convert_direct(lattice*self.latpar, x)) for x in self.Bv_cartesian]
+            crystalDict = {"lattice":lattice, "basis":basDirect, "coordsys":'D', "atom_counts":[x for x in self.atom_counts],"species":self.species,"latpar":self.latpar,"title":self.title}
+            newCrystal = Crystal(crystalDict,self.species)
+            if newCrystal.orthogonality_defect/self.orthogonality_defect > 2:
+                print('Cell is too skew, not considering it')
+                continue
+            newCrystal.validateCrystal() #Maps all the atoms into the first unit cell
+            sizeIncrease = round(newCrystal.cell_volume/self.cell_volume)
+            if newCrystal.cell_volume < 1e-3:
+                print("Found a zero volume cell!! Continuing without considering it")
+                continue
+            if abs(int(sizeIncrease) - sizeIncrease) > 1e-3:
+                print(sizeIncrease,int(sizeIncrease), "Cell volume increase doesn't appear to be an integer multiple of the parent volume")
+                import sys
+                sys.exit()
+
+            # We don't need to populate the cell if it's size 1 because we know there
+            # are the same number of basis atoms as the original
+#            if sizeIncrease == 1:
+#                continue
+            # Now populate the cell with all of the basis atoms.
+            for idx, origbasis in enumerate(basisAtoms):
+                track = 1
+                for equiv in origbasis:
+                    # First check to see if we have enough atoms of this type already.
+                    if track == sizeIncrease:
+                        break
+                    candidate = _chop_all(1e-4,map_into_cell(_chop_all(1e-4,convert_direct(newCrystal.lattice*newCrystal.latpar,equiv))))
+                    if not vec_in_list(candidate,newCrystal.basis) and (not any(candidate >= 1) and not any(candidate < 0) ) :
+                        newCrystal.basis.append(candidate)
+                        atomType = self.atom_types[idx]
+                        newCrystal.atom_types.append(atomType)
+                        newCrystal.atom_counts[atomType] += 1
+                        newCrystal.nAtoms += 1
+                        track += 1
+                        
+            if abs(newCrystal.nAtoms - sizeIncrease * self.nAtoms) > 1e-5:
+                print("You don't have enough atoms")
+                print(self.nAtoms, 'n primitive atoms')
+                print(newCrystal.nAtoms, 'n current atoms')
+                print(newCrystal.lattice, 'new lattice')
+                print(self.cell_volume, 'size primitive')
+                print(newCrystal.cell_volume, 'size current')
+                print(det(transpose(lattice)), 'det')
+                print(sizeIncrease, 'size increase')
+                print(array(newCrystal.basis), 'new basis')
+                print(newCrystal.atom_counts,'atom counts')
+                print(newCrystal.atom_types,'atom types')
+                print(len(crystals))
+                import sys
+                sys.exit()
+            sortKey = sorted(range(newCrystal.nAtoms), key = lambda x: newCrystal.atom_types[x])
+            newCrystal.basis = [newCrystal.basis[x] for x in sortKey]
+            newCrystal.atom_types = sorted(newCrystal.atom_types)
+            with open('supers.out','a+') as f:
+                f.writelines("Title\n")
+                f.writelines("{}\n".format(sizeIncrease))
+                f.writelines(newCrystal.lattice_lines)
+                f.writelines("\n{} {}\n".format(newCrystal.atom_counts[0],newCrystal.atom_counts[1]))
+                f.writelines(newCrystal.basis_lines)
+                f.writelines('\n\n\n')
+            print('adding new crystal')
+            print(newCrystal.atom_counts, 'atom counts')
+            if newCrystal.getAFMPlanes([1,0,0]) != []:
+                print('Found one')
+                print(newCrystal.lattice, 'lattice')
+                print(newCrystal.basis,'basis')
+                print(newCrystal.Bv_cartesian, 'cartesian')
+                print(self.cell_volume, 'origina cell volume')
+                print(newCrystal.cell_volume, 'super cell volume')
+                print(newCrystal.atom_counts, 'atom counts')
+                print(sizeIncrease, 'size increase')
+                print(self.orthogonality_defect, 'OD of parent')
+                print(newCrystal.orthogonality_defect, 'OD of Super')
+                import sys
+                sys.exit()
+            #crystals.append( newCrystal )
+        print("Found all super-periodics")
+        print(len(crystals))
+        import sys
+        sys.exit()
+        return crystals
         
 
        

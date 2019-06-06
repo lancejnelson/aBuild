@@ -80,7 +80,7 @@ def cat(files, target,remove = False):
             with open(fname) as infile:
                 for line in infile:
                     outfile.write(line)
-    if remov:
+    if remove:
         for file in files:
             remove(file)
     
@@ -113,4 +113,65 @@ def getProtoPaths(knary):
         return unaries + binaries
     else:
         return unaries + binaries + ternaries
+    
+def convert_direct(lattice,vec):
+    from numpy import sum as nsum, array,dot
+    from numpy.linalg import inv
+    from numpy import transpose, array, equal
+    inv_lattice = inv(lattice.transpose())
+    d_space_vector = dot(inv_lattice, array(vec))
+
+    return d_space_vector
+
+
+def vec_in_list(vec,veclist):
+#    print("Considering if vector {} is in list {}".format(vec,list))
+#    print([abs(vec - x) for x in veclist], 'diffs')
+#    print([ all(abs(vec - x) < 1e-4) for x in veclist], 'check')
+    if any([ all(abs(vec - x) < 1e-4) for x in veclist]):
+        return True
+    else:
+        return False
+
+
+def map_into_cell(vec):
+    from math import floor
+    from numpy import array
+    new_point = []
+    for i in vec:
+        if i < 0.0 or i > 1.0:
+         #   print(i,' i')
+         #   print(floor(i),' floor')
+         #   print(i - floor(i),' result')
+            new_point.append(i - floor(i))
+        elif i == 1.0:
+            new_point.append(0.0)
+        else:
+            new_point.append(i)
+    return array(new_point)
+
+
+def _chop(epsilon, const, i, j):
+    """Sets the value of i[j] to exactly 'const' if its value already lies
+    within 'epsilon' of 'const'."""
+    if abs(const-i[j]) <= epsilon:
+        i[j] = float(const)
+
+def _chop_all(epsilon, i):
+    """Performs chop() on the expected values of +- 0, 0.5, 1 for each
+    element of i."""
+    for j in range(len(i)):
+        _chop(epsilon, 3, i, j)
+        _chop(epsilon, -3, i, j)
+        _chop(epsilon, 2, i, j)
+        _chop(epsilon, -2, i, j)
+        _chop(epsilon, 1, i, j)
+        _chop(epsilon, -1, i, j)
+        _chop(epsilon, 0, i, j)
+        _chop(epsilon, 0.5, i, j)
+        _chop(epsilon, -0.5, i, j)
+
+    return i
+
+
     

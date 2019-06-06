@@ -392,7 +392,7 @@ class MTP(object):
         candIterationFiles = glob(path.join(self.root,"candidate_iteration_*"))
         relaxedIterationFiles = glob(path.join(self.root,"relaxed_iteration_*"))
         unrelaxedIterationFiles = glob(path.join(self.root,"unrelaxed_iteration_*"))
-        if len(candIterationsFiles) != len(relaxedIterationFiles) or len(candIterationsFiles) != len(unrelaxedIterationFiles):
+        if len(candIterationFiles) != len(relaxedIterationFiles) or len(candIterationFiles) != len(unrelaxedIterationFiles):
             msg.fatal(" I can't figure out what iteration we're on based on the files present.  Have a look at all of the *_iteration_* files")
         if candIterationFiles != []:
             
