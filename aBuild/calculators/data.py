@@ -28,8 +28,9 @@ element_volume ={"H":37.2958,"He":32.1789,"Li":21.2543,"Be":8.49323,"B":7.24205,
 
 #volumeperatom = {"Au": latpars["Au"]**3/4, "Ag": latpars["Ag"]**3/4, "Cu": latpars["Cu"]**3/4}
 
-#crystalStructs = {"Au": "fcc", "Ag":"fcc", "Pt":"fcc","Cu":"fcc"}
-
+crystalStructs = {"Au": "fcc", "Ag":"fcc", "Pt":"fcc","Cu":"fcc", 'U':'ortho', 'O':''}
+from numpy.linalg import norm 
+mindists = {"Au": latpars["Au"] * norm([0.5,0.5,0.0])} 
 
 def nnDistance(elements,atom_counts):
     from numpy.linalg import norm
@@ -37,6 +38,10 @@ def nnDistance(elements,atom_counts):
 
     nAtoms = sum(atom_counts)
     concentrations = array([x/nAtoms for x in atom_counts])
+    if crystalStructs[x] == 'fcc':
+        nnDist = array([latpars[x] * norm([0.5,0.5,0.0]) for x in elements])
+    elif crystalStructs[x] == 'bcc': 
+        nnDist = array([latpars[x] * norm([0.5,0.5,0.5]) for x in elements])
     lattLookup = {"fcc":norm([0.5,0.5,0]), "bcc": norm([0.5,0.5,0.5])}
 
     nnDist = array([latpars[x] * lattLookup[ crystalStructs[x] ] for x in elements])

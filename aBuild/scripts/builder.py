@@ -4,6 +4,7 @@ from aBuild.io import read
 
 script_options = {
     "dbspec": {"help": "File containing the database specifications."},
+    "-POSCAR": {"help": "When converting a POSCAR to a cif, you can supply the path to the POSCAR here.",'type':str},
     "-enum": {"action": "store_true",
            "help": "Enumerate derivative superstructures."},
     "-write": {"action": "store_true",
@@ -12,8 +13,14 @@ script_options = {
            "help": "Build input files for fitting."},
     "-report": {"action": "store_true",
            "help": "Build a report of the results of the calculations."},
+    "-cif": {"action": "store_true",
+           "help": "Build a cif file for the POSCAR specified by the -POSCAR tag"},
     "-rgk": {"action": "store_true",
            "help": "Do you want to run the getKpoint script?."},
+    "-start": {"type": int, "default": 1,
+           "help": "Which structure do you want to start with"},
+    "-end": {"type": int, "default": None,
+           "help": "Which structure do you want to start with"},
     "-s": {"action": "store_true",
            "help": "Run the setup method for each database."},
     "-x": {"action": "store_true",
@@ -87,20 +94,33 @@ def run(args):
     #No matter what other options the user has chosen, we will have to create a
     #database controller for the specification they have given us.
     from aBuild import Controller
-
     cdb = Controller(args.dbspec)
+    print(args.POSCAR,'POSCAR')
     if args.enum:
         cdb.enumerate('trainingset')
     if args.write:
         cdb.setup_training_set(runGetKpoints = args.rgk)
+
     if args.setup_train:
-        cdb.setupHandler('mtp','setup_train')
+        cdb.setupHandler('mtp',"setup_train")
+    if args.setup_relax:
+        cdb.setupHandler('mtp',"setup_relax",start = args.start,end = args.end)
+    if args.setup_select_add:
+        cdb.setupHandler('mtp',"setup_select_add")
+
+#    if args.setup_train:
+#        cdb.setup_training_input()
     if args.status:
         cdb.statusReport()
-    if args.setup_relax:
-        cdb.setupHandler('mtp','setup_relax')
-    if args.setup_select_add:
-        cdb.setupHandler('mtp','setup_select_add')
+#########################
+#THIS IS WHAT I'VE ADDED
+    if args.cif:
+        cdb.generate_cif(args.POSCAR)
+#########################
+#    if args.setup_relax:
+#        cdb.setup_relax_input()
+#    if args.setup_select_add:
+#        cdb.setup_select_input()
     if args.add:
         cdb.augmentTraining()
     if args.report:

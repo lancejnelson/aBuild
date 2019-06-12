@@ -168,12 +168,12 @@ class Controller(object):
 
         self.dataset = "trainingset"
         trainingRoot = path.join(self.root,'training_set')
-        trainingSet = dataset(self.enumDicts,self.species)
+        trainingSet = dataset(self.enumDicts,self.species,restrictions = 'AFM' in self.calculator[self.calculator["active"]])
         trainingSet.buildFolders(trainingRoot,self.calculator,runGetKpoints = runGetKpoints)
         
         
 
-    def setupHandler(self,model,tag):
+    def setupHandler(self,model,tag,start = 1,end = None):
         from aBuild.fitting.mtp import MTP
         from os import path
         
@@ -181,10 +181,9 @@ class Controller(object):
         trainingRoot = path.join(self.root, 'training_set')
 
         self.dataset = 'gss'
-        
         thisMTP = MTP(fittingRoot,settings=self.fitting)
         handler = {'setup_train':lambda: thisMTP.setup_train(trainingRoot,self.species),
-                   'setup_relax':lambda:thisMTP.setup_relax(self.enumDicts,self.species),
+                   'setup_relax':lambda:thisMTP.setup_relax(self.enumDicts,self.species,AFM = 'AFM' in self.calculator[self.calculator["active"]].keys(), start = start,end = end),
                     'setup_select_add':lambda :thisMTP.setup_select()}
         handler[tag]()
 
@@ -208,7 +207,7 @@ class Controller(object):
             activedirs = glob("A.*")
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-        stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[]}
+        stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[]}
         for dir in dirs:
             thisVASP = VASP(dir,systemSpecies = self.species)
             stat[thisVASP.status()].append(dir.split('/')[-1])
@@ -227,6 +226,8 @@ class Controller(object):
         msg.info(' '.join(stat['warning']))
         msg.info('Not sure (' + str(len(stat['idk'])) + ')')
         msg.info(' '.join(stat['idk']))
+        msg.info('Unconverged (' + str(len(stat['unconverged'])) + ')')
+        msg.info(' '.join(stat['unconverged']))
 
     def gatherResults(self):
         from os import path

@@ -72,10 +72,14 @@ class VASP:
                 specs["incar"]["magmom"] += ' '
             
 
-        
+    # VASP does not like to have zeros in the atom_counts list
+    # but I want to keep track of which atoms are in the crystal.
+    # This routine is just here to remove any zeros before I write to
+    # the POSCAR file.
     def check_atom_counts_zero(self):
-        from numpy import array
-
+        from numpy import array,any
+        print(self.crystal.atom_counts, 'atom counts')
+        print(any(self.crystal.atom_counts == 0))
         if any(self.crystal.atom_counts == 0):
             from numpy import  where
             idxKeep = list(where( self.crystal.atom_counts > 0)[0])
@@ -117,7 +121,7 @@ class VASP:
             poscar = self._check_file_exists('POSCAR')
             output = self._check_file_exists('output')
             oszicar = self._check_file_exists('OSZICAR')
-
+            
 
             inputs = incar and kpoints and potcar and poscar
 
@@ -136,6 +140,19 @@ class VASP:
                 sgrcon = grep('OUTCAR','SGRCON')
                 finalenergyline = grep('OUTCAR','free  energy')
 
+                # Check to make sure I've convged electonically.
+                electronicIteration = int(grep('OSZICAR','DAV:')[-1].split()[1])
+                if grep('INCAR','nsw') != []:
+                    nsw = int(grep('INCAR','nsw')[0].split('=')[1])
+                else:
+                    nsw = 0
+                if grep('OSZICAR','F=') != []:
+                    ionicIteration = int(grep('OSZICAR','F=')[-1].split()[0])
+                else:
+                    ionicIteration = 0
+                if ionicIteration == nsw and electronicIteration == 60:
+                    return 'unconverged'
+                    
                 ''' Let's first check to see if this is a static
                 calculation or a relaxation because the tag 
                 to check for is different.'''

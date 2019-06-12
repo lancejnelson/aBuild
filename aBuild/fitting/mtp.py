@@ -244,7 +244,7 @@ class MTP(object):
     #               3- mlp calc-grade is performed in preparation for the relaxation.
     #                   We just run this interactively because it doesn't take too long.
     #               4- A job submission script is generated.
-    def setup_relax(self,enumDicts,species,freshStart = False):
+    def setup_relax(self,enumDicts,species,freshStart = False,AFM = False,start = 1,end = None):
         from os import remove,path,rename
         from aBuild.fitting.mtp import MTP
         from glob import glob
@@ -271,13 +271,13 @@ class MTP(object):
         # 1.
         if not torelax:  #This must be the first iteration
             print('Building a new to-relax.cfg file')
-            self.build_ToRelax(enumDicts,species)
+            self.build_ToRelax(enumDicts,species,AFM = AFM,start = start,end = end)
 
         # 2.
         else: # What iteration is it?
             if freshStart:
                 remove(filePath)
-                self.build_ToRelax(enumDicts,species)
+                self.build_ToRelax(enumDicts,species,AFM = AFM,start = start,end = end)
          #   elif unrelaxed:  #Iteration must be > 1
          ##       unrelaxedFiles = glob(path.join(fittingRoot,"unrelaxed.cfg_*"))
           ##      cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
@@ -317,7 +317,7 @@ class MTP(object):
         
 
 
-    def build_ToRelax(self,enumDicts,species):
+    def build_ToRelax(self,enumDicts,species,AFM = False,start = 1,end = None):
         from aBuild.enumeration import Enumerate
         from aBuild.utility import unpackProtos,getAllPerms,getProtoPaths
         from aBuild.database.crystal import Crystal
@@ -327,7 +327,7 @@ class MTP(object):
         nEnums = len(enumDicts)
         knary = len(species)
         for ilat  in range(nEnums):
-            lat = enumDicts[ilat]["lattice"]
+            lat = enumDicts[ilat]["name"]
             
             if lat == 'protos':
                 structures = getProtoPaths(knary)
@@ -340,27 +340,68 @@ class MTP(object):
 
                         #print("Atom counts before scramble {}".format(thisCrystal.atom_counts))
                         thisCrystal.scrambleAtoms(scramble)
-                       
+                        if not thisCrystal.concsOK(concRestrictions = enumDicts[ilat]["concs"]):
+                            continue
                         print(thisCrystal.title)
                         mindist = thisCrystal.minDist
                         print(mindist, "actual min dist<-----------------------------------------------------------------------------------------------------")
-                        print(thisCrystal.appMinDist, 'appropriate min distance')
+
                         if mindist > 2 and thisCrystal.nAtoms < 60:
-                            print('Adding to file')
-        #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
-                            with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
-                                f.writelines('\n'.join(thisCrystal.lines('mtprelax') ) )
-                
+                            if not AFM:
+                                print('Adding to file')
+                                #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
+                                with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
+                                    f.writelines('\n'.join(thisCrystal.lines('mtprelax') ) )
+                            elif thisCrystal.getAFMPlanes([1,0,0]) != []:
+                                print("Original Crystal is AFM compatible")
+                                with open(path.join(self.root,'to-relax.cfg_' + str(start)),'a+') as f:
+                                    f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+                              #  break
+                            else:
+                                print("Checking super-periodics")
+                        
+                                superCrystal = thisCrystal.superPeriodics(2)
+                                if superCrystal != []:
+                                    print('Found a super-Periodic that works')
+                                    print(superCrystal.basis,'basis')
+                                    print(superCrystal.atom_counts, 'atom counts')
+                                    with open(path.join(self.root,'to-relax.cfg_' + str(start)),'a+') as f:
+                                        f.writelines('\n'.join(superCrystal.lines('mtprelax') ))
+                               # break
             else:
                 enumLattice = Enumerate(enumDicts[ilat])
-                for struct in range(1,enumLattice.nConfigs+1):
+                if end == None:
+                    end = enumLattice.nConfigs + 1
+                    filetag = ''
+                else:
+                    filetag = '_' + str(start)
+                #for struct in range(enumLattice.nConfigs+1):
+                for struct in range(start, end):
                     print("Lattice",lat, "structure:",struct)
                     enumLattice.generatePOSCAR(struct) 
                     thisCrystal = Crystal(path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct)),species)
-#                    print(thisCrystal.appMinDist,' approp Min Dist')
+                    if not AFM:
+                        with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
+                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+                        
+                    elif thisCrystal.getAFMPlanes([1,0,0]) != []:
+                        print("Original Crystal is AFM compatible")
+                        with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
+                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+                    else:
+                        print("Checking super-periodics")
+                        
+                        superCrystal = thisCrystal.superPeriodics(2)
+                        if superCrystal != []:
+                            print('Found a super-Periodic that works')
+                            with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
+                                f.writelines('\n'.join(superCrystal.lines('mtprelax') ))
+                            
+                        
+                    #                    print(thisCrystal.appMinDist,' approp Min Dist')
  #                   print(thisCrystal.minDist, 'actual min dist')
-                    with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
-                        f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+#                    with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
+#                        f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
 
                     delpath = path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct))
                     remove(delpath)

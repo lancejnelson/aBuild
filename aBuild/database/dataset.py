@@ -4,14 +4,14 @@ from aBuild.utility import chdir, _get_reporoot
 
 class dataset:
 
-    def __init__(self,dset,systemSpecies,root=None,calculator = None,lFormat = 'mtpselect'):
+    def __init__(self,dset,systemSpecies,root=None,calculator = None,lFormat = 'mtpselect',restrictions = None):
         from os import path,makedirs
         from aBuild.database.crystal import Crystal
         from aBuild.calculators.vasp import VASP
 
         self.calculator = calculator
         self.species = systemSpecies
-        
+        self.restrictions = restrictions
         if isinstance(dset,list):
             
             if isinstance(dset[0], dict):
@@ -58,7 +58,7 @@ class dataset:
 
             # Loop to generate random structures for a given lattice type
             for i in range(eDict["nconfigs"]):
-                rStruct = 5#randrange(1,enumController.nEnumStructs)
+                rStruct = randrange(1,enumController.nEnumStructs)
                 print('Adding {} structure # {} to database'.format(eDict["lattice"],rStruct) )
                 with open('structNums','a+') as f:
                     f.write(eDict["name"] + ' ' + str(rStruct) + '\n')
@@ -68,13 +68,29 @@ class dataset:
                 
                 poscarpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["name"],rStruct))
                 thisCrystal = Crystal(poscarpath, systemSpecies = systemSpecies) #title = ' '.join([self.enumDicts[index]["lattice"]," str #: {}"]).format(rStruct)
-               # print(thisCrystal.atom_counts, 'atom counts of primitive')
-               # print(thisCrystal.latpar)
-               # thisCrystal.getAFMPlanes([1,0,0])
-                thisCrystal.superPeriodics(5)
-                import sys
-                sys.exit()
-                self.crystals.append(thisCrystal)
+                if self.restrictions is None:
+                    self.crystals.append(thisCrystal)
+                elif thisCrystal.getAFMPlanes([1,0,0]) != []:
+                    print('parent is AFM compatible')
+                    self.crystals.append(thisCrystal)
+                   # import sys
+                   # sys.exit()
+                else:
+                    superCrystal = thisCrystal.superPeriodics(2)
+                    if superCrystal != []:
+                        print('super periodic structures is AFM compatible')
+                        print(superCrystal.minDist, 'minDist')
+                        print(superCrystal.basis,' basis')
+                        print(superCrystal.Bv_direct, 'direct')
+                        print(superCrystal.Bv_cartesian, 'cartesian')
+                        self.crystals.append(superCrystal)
+                        #import sys
+                        #sys.exit()
+                    else:
+                        print("Can't find an AFM compatible structure")
+                        import sys
+                        sys.exit()
+#                self.crystals.append(thisCrystal)
                 delpath = path.join(enumController.root,"poscar.{}.{}".format(eDict["name"],rStruct))
                 remove(delpath)
 
@@ -130,6 +146,7 @@ class dataset:
         
         self.crystals = []
         for dirpath in paths:
+            print("Initializing from path: {}".format(dirpath))
             if self.calculator == 'VASP':
                 calc = VASP(dirpath,systemSpecies = systemSpecies)
                 calc.read_results()
@@ -138,6 +155,8 @@ class dataset:
             if self.calculator == 'LAMMPS':
                 calc = LAMMPS(dirpath,systemSpecies)
                 calc.read_results()
+
+                
             if calc.crystal.results is not None:
                 self.crystals.append(calc.crystal)
 
@@ -188,6 +207,7 @@ class dataset:
                       'lammps': lambda obj: obj.buildFolder()} 
 
         for crystal in self.crystals:
+            #Augment the existing dictionary in preparation for sending it in
             calculator[calculator["active"]]["crystal"] = crystal
             calculator[calculator["active"]]["species"] = self.species
             # Initialize the calculation object
