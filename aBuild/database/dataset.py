@@ -4,7 +4,7 @@ from aBuild.utility import chdir, _get_reporoot
 
 class dataset:
 
-    def __init__(self,dset,systemSpecies,root=None,calculator = None,lFormat = 'mtpselect',restrictions = None):
+    def __init__(self,dset,systemSpecies,root=None,calculator = None,lFormat = 'mlp',restrictions = None):
         from os import path,makedirs
         from aBuild.database.crystal import Crystal
         from aBuild.calculators.vasp import VASP
@@ -37,6 +37,7 @@ class dataset:
         from aBuild.jobs import Job
         from random import randrange
         from aBuild.utility import chdir
+        from numpy import array
         from os import remove, path
 
         #        from crystal import Crystal
@@ -58,7 +59,7 @@ class dataset:
 
             # Loop to generate random structures for a given lattice type
             for i in range(eDict["nconfigs"]):
-                rStruct = randrange(1,enumController.nEnumStructs)
+                rStruct = 16254#randrange(1,enumController.nEnumStructs)
                 print('Adding {} structure # {} to database'.format(eDict["lattice"],rStruct) )
                 with open('structNums','a+') as f:
                     f.write(eDict["name"] + ' ' + str(rStruct) + '\n')
@@ -70,22 +71,22 @@ class dataset:
                 thisCrystal = Crystal(poscarpath, systemSpecies = systemSpecies) #title = ' '.join([self.enumDicts[index]["lattice"]," str #: {}"]).format(rStruct)
                 if self.restrictions is None:
                     self.crystals.append(thisCrystal)
-                elif thisCrystal.getAFMPlanes([1,0,0]) != []:
+                elif thisCrystal.getAFMPlanes([1,0,0]):
                     print('parent is AFM compatible')
                     self.crystals.append(thisCrystal)
-                   # import sys
-                   # sys.exit()
+                    import sys
+                    sys.exit()
                 else:
                     superCrystal = thisCrystal.superPeriodics(2)
                     if superCrystal != []:
                         print('super periodic structures is AFM compatible')
                         print(superCrystal.minDist, 'minDist')
                         print(superCrystal.basis,' basis')
-                        print(superCrystal.Bv_direct, 'direct')
-                        print(superCrystal.Bv_cartesian, 'cartesian')
+                        print(array(superCrystal.Bv_direct), 'direct')
+                        print(array(superCrystal.Bv_cartesian), 'cartesian')
                         self.crystals.append(superCrystal)
-                        #import sys
-                        #sys.exit()
+                        import sys
+                        sys.exit()
                     else:
                         print("Can't find an AFM compatible structure")
                         import sys
@@ -98,9 +99,15 @@ class dataset:
     # create a list of crystal objects
     def init_file(self,datafile,linesformat):
         from os import path
-        handler = {'new_training.cfg':lambda file: self._init_mlpadd(file),'train.cfg': 'mlptrain','structures.in':'ce','dataReport_VASP.txt': lambda file: self._init_dataReport(file)}
+        handler = {'new_training.cfg':lambda file: self._init_mlp(file),'train.cfg': 'mlptrain','structures.in':'ce',}
+        if 'relaxed' in datafile:
+            handler[path.split(datafile)[-1]] = lambda file: self._init_mlp(file)
+        if 'dataReport' in datafile:
+            handler[path.split(datafile)[-1]] = lambda file: self._init_dataReport(file)
+        if 'train' in datafile:
+            handler[path.split(datafile)[-1]] = lambda file: self._init_mlp(file)
         #selectedFile = path.join(self.root,'new_training.cfg')
-
+        print(handler, 'handler')
         handler[path.split(datafile)[-1]](datafile)
 
     def _init_dataReport(self,datafile):
@@ -111,30 +118,46 @@ class dataset:
         self.formationenergies = [ float(x.split()[-5]) for x in lines]
         self.concs = [ float(x.split()[-4]) for x in lines]
         
-    def _init_mlpadd(self,datafile):
+    def _init_mlp(self,datafile):
         from aBuild.database.crystal import Crystal
+        import os
+        from os import path
+        from aBuild.calculators.vasp import VASP
         with open(datafile,'r') as f:
             lines = f.readlines()
 
         self.crystals = []
         nCrystals = 0
+        # Get information for pures so I can calculate formation energies 
+        root = os.getcwd()
+        pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
+        puresDict = {}
+        for ispec,spec in enumerate(self.species):
+            pures[ispec].read_results()
+            puresDict[spec] = pures[ispec].crystal.results["energypatom"]
+
         for index,line in enumerate(lines):
-            print(index)
+            print("Processed {} crystals".format(nCrystals))
             if 'BEGIN' in line:
                 indexStart = index
             elif 'END' in line:
                 indexEnd = index
                 structlines = lines[indexStart:indexEnd + 1]
-            
+                nCrystals += 1
                 
-                #                nCrystals += 1
-                #if numOfStructs is not 'all' and (nCrystals < start or nCrystals > start + numOfStructs):
-                #    continue
-#                nAtoms = int(lines[index+2].split()[0])
-#                structlines = lines[index:index + 18 + nAtoms]
-                print(structlines, 'struct lines')
-                thisCrystal = Crystal(structlines,self.species,lFormat = 'mlpselect')
-                self.crystals.append(thisCrystal)
+                thisCrystal = Crystal(structlines,self.species,lFormat = 'mlp')
+                thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
+                if thisCrystal.results == None:
+                    if thisCrystal.minDist > 1.5:
+                        self.crystals.append(thisCrystal)
+                else:
+                    if thisCrystal.results["energyF"] < 100 and thisCrystal.minDist > 1.5:
+                        self.crystals.append(thisCrystal)
+                    else:
+                        print("Not adding structure {}.  Seems like an extreme one.".format(thisCrystal.title))
+                        print("Energy: {}".format(thisCrystal.results["energyF"]))
+                        print("MinDist: {}".format(thisCrystal.minDist))
+
 
 
 
@@ -207,13 +230,19 @@ class dataset:
                       'lammps': lambda obj: obj.buildFolder()} 
 
         for crystal in self.crystals:
+            print("Building crystal {}".format(crystal.title))
             #Augment the existing dictionary in preparation for sending it in
             calculator[calculator["active"]]["crystal"] = crystal
             calculator[calculator["active"]]["species"] = self.species
+            
             # Initialize the calculation object
             thisCalc = lookupCalc[calculator["active"]](calculator[calculator["active"]])
 #            thisCalc = lookupCalc[calculator["active"]](lookupSpecs[calculator["active"]](crystal))
-                                  
+
+            if 'AFM' in calculator[calculator["active"]] and thisCalc.crystal.AFMPlanes == None:
+                msg.info("Skipping this structure because I can't find the AFM planes")
+                continue
+            
             # Build the path
             runpath = path.join(buildpath,foldername + ".{}".format(configIndex) )
             if not path.isdir(runpath):
@@ -221,12 +250,12 @@ class dataset:
             else:
                 msg.fatal("I'm gonna write over top of a current directory. ({})  I think I'll stop instead.".format(runpath))
 
-            # Change the directory and build the folder
+                # Change the directory and build the folder
             print("Building folder for structure: {}".format(crystal.title) )
             with chdir(runpath):
                 lookupBuild[calculator["active"]](thisCalc)
             configIndex += 1
-
+            
 
         # Build the submission script
         exdir = path.join(buildpath,'E.')
@@ -285,20 +314,20 @@ class dataset:
 
 
 
-    def writeReport(self):
+    def writeReport(self,dset):
         import datetime
         nAtoms = len(self.crystals[0].species)
-        with open('dataReport_' + self.calculator + '.txt', 'w') as f:
-            f.write(self.calculator + ' REPORT\n')
+        with open('dataReport_' + dset + '.txt', 'w') as f:
+            f.write(dset + ' REPORT\n')
             f.write(str(datetime.datetime.now()) + '\n')
-            f.write("{:35s} {:14s}{:14s}{:12s}{:10s}{:9s}".format("Title"," T. Energy","F. Energy","Conc.",self.crystals[0].species[0] + "-atoms",self.crystals[0].species[1] + "-atoms\n"))
+            f.write("{:54s} {:14s}{:13s}{:14s}{:12s}{:10s}{:9s}".format("Title"," T. Energy","Enery/Atom","F. Energy","Conc.",self.crystals[0].species[0] + "-atoms",self.crystals[0].species[1] + "-atoms\n"))
             f.write('------------------------------------------------------------------------------------------------------------------\n')
             for crystal in self.crystals:
                 f.write(crystal.reportline)
 
-    def generateConvexHullPlot(self):
+    def generateConvexHullPlot(self,plotAll = True):
         from scipy.spatial import ConvexHull
-        from numpy import array
+        from numpy import array,append
         from matplotlib import pyplot
         #with open('dataReport_VASP.txt','r') as f:
         #    lines = f.readlines()
@@ -306,19 +335,35 @@ class dataset:
         #del lines[0:4]
         #data = [[float(x.split()[-4]),float(x.split()[-5] )] for x in lines]
         #data = [[i.results["fEnth"],i.concentrations[0]] for x in self.crystals]
-        data = array([[self.concs[i],self.formationenergies[i]] for i in range(len(self.formationenergies))])
+        data = [[self.concs[i],self.formationenergies[i]] for i in range(len(self.formationenergies))]
+        print(data,'data before')
+ #       print(data.shape)
+        data.append([0.0,0.0])
+        data.append([1.0,0.0])
+        data = array(data)
+#        append(data,array([ 0.0 , 0.0 ]),axis=0)
+#        data = append(data,array([ 1.0 , 0.0]),axis = 0)
+       # if [0.0,0.0] not in data:
+       #     append(data,[0.0,0.0])
+       # if [1.0,0.0] not in data:
+       #     append(data,[1.0,0.0])
         print(data,'data')
         hull = ConvexHull(data)
         pyplot.plot(self.concs,self.formationenergies,'r+')
         plotConcs = []
         plotEnergies = []
 #        pyplot.plot(data[hull.vertices,0], data[hull.vertices,1],'b-',lw = 2)
-
-        for vertex in hull.vertices:
-            if self.formationenergies[vertex] <= 0:
+        print(hull.vertices, 'verts')
+        print(len(data))
+        vertices = sorted(hull.vertices,key = lambda k: data[k][0])
+        for ivert,vertex in enumerate(vertices):
+            if data[vertex,1] <= 0:
                 plotConcs.append(data[vertex,0])
                 plotEnergies.append(data[vertex,1])
+            
         pyplot.plot(plotConcs,plotEnergies,'k-')
+        if plotAll:
+            pyplot.plot([x[0] for x in data],[x[1] for x in data],'r+')
         pyplot.savefig('chull.png')
         
 

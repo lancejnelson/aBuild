@@ -176,22 +176,24 @@ class Crystal(object):
         elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
             print('initializing from a list')
             self._init_lines(crystalSpecs, lFormat)
-        self.results = None
-        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
-        self.atom_types = []
-        for i in typesList:
-            self.atom_types += i
-        self.nAtoms = sum(self.atom_counts)
-        self.nTypes = len(self.atom_counts)
+            
+#        self.results = None
+#        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
+#        self.atom_types = []
+#        for i in typesList:
+#            self.atom_types += i
+#        self.nAtoms = sum(self.atom_counts)
+#        self.nTypes = len(self.atom_counts)
         if self.nAtoms != len(self.basis):
             msg.fatal("We have a problem")
 
             #        print("Before, the atom counts was {}.".format(self.atom_counts)) 
         self._add_zeros(systemSpecies,crystalSpecies)
+        
         #print("After, the atom counts was {}.".format(self.atom_counts)) 
             #''' Didn't read in a POTCAR that was associated with the crystal '''
             
-
+        self.AFMPlanes = None
         if len(self.species) != self.nTypes:
             msg.fatal('The number of atom types provided ({})is not consistent with the number of atom types found in the poscar ({})'.format(self.species,self.nTypes))
         if self.species == None:
@@ -218,6 +220,7 @@ class Crystal(object):
             # in, starting at the front.  For example, when I read in the prototype
             # files, zeros are not included in the list of 
             if len(systemSpecies) != self.nTypes:
+                msg.fatal("It appears that we need to insert zeros in atom_counts, but I don't know where to add them")
                 diff = len(systemSpecies) - self.nTypes
                 self.atom_counts = array(list(self.atom_counts) + [0 for x in range(diff)])
                 self.nTypes = len(self.atom_counts)
@@ -259,8 +262,8 @@ class Crystal(object):
 
             
     def _init_lines(self,lines,linesFormat):
-        if linesFormat == 'mlpselect':
-            self.fromMLPSelect(lines)
+        if linesFormat == 'mlp':
+            self.fromMLP(lines)
 
     def _init_dict(self,crystalDict):
         necessary = ['lattice','basis','atom_counts','coordsys','species']
@@ -273,6 +276,13 @@ class Crystal(object):
         self.lattice = crystalDict["lattice"]
         self.basis = crystalDict["basis"]
         self.atom_counts = crystalDict["atom_counts"]
+        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
+        self.atom_types = []
+        for i in typesList:
+            self.atom_types += i
+        self.nAtoms = sum(self.atom_counts)
+        self.nTypes = len(self.atom_counts)
+ 
         self.coordsys = crystalDict["coordsys"]
         self.species = crystalDict["species"]
         if sorted(self.species,reverse = True) != self.species:
@@ -473,37 +483,67 @@ class Crystal(object):
         # Get position vectors for all of the A atoms,
         locationAatoms = [basis[idy] for idx,basis in enumerate(self.neighbors) for idy,y in enumerate(basis) if basis[idy][2] in aAtoms]
 
+        eps = 1e-1
         # Build a dictionary, one list for every plane of atoms
         planesDict = {}
+
+        # Sometimes after a relaxation, atoms will have moved slightly off of their ideal
+        # planes.  So we need to check to see if atoms are close to their planes.
         for idx,atom in enumerate(locationAatoms):
-            if atom[0][0] not in planesDict:
+            if not any(abs(array([x for x in planesDict.keys()]) - atom[0][0]) < eps): #Found new plane
+#                print('new plane found')
+#                print(atom[0][0], 'x  coord')
+#                print(atom, 'full atom to record')
+#            if atom[0][0] not in planesDict:
                 planesDict[atom[0][0]] = [atom]
-            else:
-                planesDict[atom[0][0]].append(atom)
+            else:  #Adding an atom to a plane that I already found
+ #               print('adding atom to previously found plane.')
+                loc = abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin()
+                planeAdd = array([x for x in planesDict.keys()])[loc]
+ #               print(list(planesDict.keys()), "planes found thus far")
+ #               print(array([x for x in planesDict.keys()]) - atom[0][0], 'diffs')
+ ##               print(abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin(), 'location of min')
+ #               print("Placing atom {} in plane {}.".format(atom,planeAdd))
+                planesDict[planeAdd].append(atom)
         planes = sorted(list(planesDict.keys()))
+  #      print(planes, 'here are the planes')
+  #      print(planesDict,' planesDict')
         nPlanes = len(planes)
         planesAtoms = [set([x[2] for x in planesDict[y]]) for y in planes  ]
         evenPlanes = set([x for y in range(0,nPlanes,2) for x  in planesAtoms[y] ])
         oddPlanes = set([x for y in range(1,nPlanes,2) for x  in planesAtoms[y] ])
+#        print(evenPlanes, 'even planes')
+#        print(oddPlanes, 'odd planes')
         check = [x in evenPlanes for x in oddPlanes]
         if any(check):
-            return []
+            self.AFMPlanes = None
+           # print(planes, 'here are the planes')
+           # print(evenPlanes, 'even planes')
+           # print(oddPlanes, 'odd planes')
+           # print(planesDict,' planes dict')
+            return False
         else:
-            return [evenPlanes,oddPlanes]
+            self.AFMPlanes = [0 for x in aAtoms]
+            for i in evenPlanes:
+                self.AFMPlanes[i] = 2
+            for i in oddPlanes:
+                self.AFMPlanes[i] = -2
+            print(evenPlanes,oddPlanes, self.AFMPlanes,' check AFM results') 
+            return True
     @property
     def Bv_direct(self):
-        from numpy import sum as nsum, array
+        from numpy import sum as nsum, array,dot
         if self.coordsys[0].upper() == 'D':
             return self.basis
-        print('getting direct vectors')
         from numpy.linalg import inv
         from numpy import transpose, array, equal
         inv_lattice = inv(self.lattice.transpose()*self.latpar)        
         d_space_vector = [ list(dot(inv_lattice, array(b))) for b in self.basis ]
 
+        epsilon = 1e-4
         output = []
         for i in d_space_vector:
-            if i not in output:
+            if _chop_all(epsilon, i) not in output:
                 output.append(_chop_all(epsilon, i))
 
         return output
@@ -723,22 +763,32 @@ class Crystal(object):
             self.lattice = array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
             self.basis = array([list(map(float, b.strip().split()[0:3])) for b in lines.Bv])
             self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
+            typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
+            self.atom_types = []
+            for i in typesList:
+                self.atom_types += i
+        
             self.latpar = float(lines.latpar.split()[0])
             if self.latpar == 1.0 or self.latpar < 0:
                 self.latpar = None
             #print(self.latpar, 'lat par read in')
             self.coordsys = lines.coordsys
 #            self.title  = lines.label
-            self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
-
+            if len(lines.label) > 50:
+                self.title = path.split(filepath)[0].split('/')[-1] + '_proto'
+            else:
+                self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
+            self.nAtoms = sum(self.atom_counts)
+            self.nTypes = len(self.atom_counts)
+ 
         except:
             raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
             
 
     @property
     def reportline(self):
-        line = [self.title , self.results["energyF"], self.results["fEnth"]]
-        lineWrite = '{:35s}  {:9.4f}   {:9.4f}'
+        line = [self.title , self.results["energyF"],self.results["energyF"]/self.nAtoms, self.results["fEnth"]]
+        lineWrite = '{:55s} {:9.4f} {:12.4f}{:12.4f}'
         
         for i in self.concentrations:
             line.append(i)
@@ -779,19 +829,42 @@ class Crystal(object):
         self.coordsys = 'D'
         self.title = path.split(filepath)[0].split('/')[-1] + lines[1].split('\n')[0]
         
-    def fromMLPSelect(self,lines):
+    def fromMLP(self,lines):
         from numpy import array
+        import os
+        from aBuild.calculators.vasp import VASP
         nAtoms = int(lines[2].split()[0])
         latDict = {}
+        self.results = {}
         self.lattice = array([list(map(float,x.split())) for x in lines[4:7]])
         self.basis = array([list(map(float,x.split()[2:5])) for x in lines[8:8 + nAtoms]])
         self.nAtoms = len(self.basis)
         self.coordsys = 'C'
-        atoms = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
-        self.atom_counts = array([ atoms.count(x) for x in range(max(atoms)+1)])
+        self.atom_types = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
+        self.results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
+        self.atom_counts = array([ self.atom_types.count(x) for x in set(self.atom_types)]) #range(max(atoms)+1)
+        self.nTypes = len(self.atom_counts)
+        # THe add_zeros function is here in case you run into a config with few atom types than the
+        # system being studied. Like running into a pure config for a binary system.  Or a binary config
+        # when studying a ternary system.
+        self._add_zeros(self.species,[self.species[x] for x in list(set(self.atom_types))])
         titleindex = ['conf_id' in x for x in lines].index(True)
         self.title = ' '.join(lines[titleindex].split()[2:])
-        
+        if any(['Energy' in x for x in lines] ):
+            energyindex = ['Energy' in x for x in lines].index(True)
+            
+            self.results["energyF"] = float(lines[energyindex + 1].strip().split()[0])
+#            root = os.getcwd()
+#            pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
+#            puresDict = {}
+#            for ispec,spec in enumerate(self.species):
+#                #thispure = VASP(path.join(root,'training_set','pure' + spec,systemSpecies = self.species))
+#                pures[ispec].read_results()
+##                thispure.read_results()
+#                puresDict[spec] = pures[ispec].crystal.results["energypatom"]
+#            self.results["fEnth"] = self.results["energyF"]/self.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.concentrations[i] for i in range(self.nTypes)])
+        else:
+            self.results = None
         self.latpar = 1.0
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')
@@ -857,7 +930,9 @@ class Crystal(object):
         dimension = len(self.lattice)
         multiplesOf = array([x for x in combinations([x for x in product(range(-2,3),repeat = dimension) if sum(abs(array(x))) !=0],dimension) ]) 
         lattices = einsum('abc,dc->abd',multiplesOf,transpose(self.lattice))
-        keeps = sorted([x  for x in lattices if abs(det(transpose(x))) > 1e-3 and abs(det(transpose(x)))/abs(det(transpose(self.lattice))) <= size and orthogonality_defect(x)/orthogonality_defect(self.lattice) < 2], key = lambda k: orthogonality_defect(k))
+        #Keep only the lattices with i) positive triple product  ii) specified size increase or less  iii) orthogonality defect
+        # less than 2, and sort them by their orthogonality defect.
+        keeps = sorted([x  for x in lattices if det(x) > 1e-3 and abs(det(x))/abs(det(self.lattice)) <= size and orthogonality_defect(x)/orthogonality_defect(self.lattice) < 2], key = lambda k: orthogonality_defect(k))
 
 #        sorted(keeps, key = lambda k: orthogonality_defect(k))
         # Done getting super-periodic lattice vectors.
@@ -896,6 +971,7 @@ class Crystal(object):
 #            if sizeIncrease == 1:
 #                continue
             # Now populate the cell with all of the basis atoms.
+            print("condisdering lattice {}".format(lattice))
             for idx, origbasis in enumerate(basisAtoms):
                 #print(idx,' adding atoms of this type')
                 track = 1
@@ -943,24 +1019,12 @@ class Crystal(object):
                 f.writelines(newCrystal.basis_lines)
                 f.writelines('\n\n\n')
 
-                print("Got Super-periodic.  Checking for AFM compatible")
             if abs(newCrystal.minDist - self.minDist)    > 1e-3:
                 msg.fatal("mindist for super-periodic is different than parent")
                 
-            if newCrystal.getAFMPlanes([1,0,0]) != []:
-                print('Found one')
-                print(newCrystal.lattice, 'lattice')
-                print(newCrystal.basis,'basis')
-                print(newCrystal.Bv_cartesian, 'cartesian')
-                print(self.cell_volume, 'origina cell volume')
-                print(newCrystal.cell_volume, 'super cell volume')
-                print(newCrystal.atom_counts, 'atom counts')
-                print(sizeIncrease, 'size increase')
-                print(self.orthogonality_defect, 'OD of parent')
-                print(newCrystal.orthogonality_defect, 'OD of Super')
+            print("Got Super-periodic.  Checking for AFM compatible")
+            if newCrystal.getAFMPlanes([1,0,0]):
                 return newCrystal
-                import sys
-                sys.exit()
             print('not AFM compatible')
             #crystals.append( newCrystal )
         #import sys

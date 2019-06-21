@@ -39,6 +39,7 @@ class VASP:
                 else:
                     self.crystal = Crystal(specs["crystal"],specs["species"])
                 self.handleSpecialTags(specs)
+                    
                 self.INCAR = INCAR(specs["incar"])
             else:
                 msg.fatal("I don't have all the necessary information to initialize: {}".format(specs.keys()))
@@ -70,8 +71,19 @@ class VASP:
             for idx,species in enumerate(sorted(specs["FM"],reverse = True)):
                 specs["incar"]["magmom"] +=  ' '.join(map(str, [ specs["FM"][species] ] * self.crystal.atom_counts[idx]))
                 specs["incar"]["magmom"] += ' '
+        elif "AFM" in specs.keys():
+            if self.crystal.AFMPlanes == None:
+                self.crystal.getAFMPlanes([1,0,0])
+            if self.crystal.AFMPlanes == None:
+                msg.info("You supposedly had an AFM crystal, but I'm not finding the planes")
+                return
+            specs["incar"]["ispin"] = 2
+            #Put in nonzero spin values
+            specs["incar"]["magmom"] = ' '.join(map(str,self.crystal.AFMPlanes)) + ' '
+            atomsLeft = self.crystal.nAtoms - len(self.crystal.AFMPlanes)
+            specs["incar"]["magmom"] += ' '.join(map(str,[0 for x in range(atomsLeft)]))
+             
             
-
     # VASP does not like to have zeros in the atom_counts list
     # but I want to keep track of which atoms are in the crystal.
     # This routine is just here to remove any zeros before I write to
@@ -119,7 +131,7 @@ class VASP:
             kpoints = self._check_file_exists('KPOINTS')
             potcar = self._check_file_exists('POTCAR')
             poscar = self._check_file_exists('POSCAR')
-            output = self._check_file_exists('output')
+            output = self._check_file_exists('vasp_output')
             oszicar = self._check_file_exists('OSZICAR')
             
 
@@ -137,20 +149,31 @@ class VASP:
                     with errors!
                 '''
             elif outcar: # OUTCAR present
-                sgrcon = grep('OUTCAR','SGRCON')
-                finalenergyline = grep('OUTCAR','free  energy')
 
-                # Check to make sure I've convged electonically.
-                electronicIteration = int(grep('OSZICAR','DAV:')[-1].split()[1])
+                sgrcon = grep('vasp_output','SGRCON')
+                tooclose = grep('vasp_output','HOPE')
+                finalenergyline = grep('OUTCAR','free  energy')
+                generalerror = grep('vasp_output','ERROR')
+                # Check to make sure I've converged electonically.
+                if grep('OSZICAR','DAV:') != []:
+                    electronicIteration = int(grep('OSZICAR','DAV:')[-1].split()[1])
+                else:
+                    electronicIteration = 0
                 if grep('INCAR','nsw') != []:
                     nsw = int(grep('INCAR','nsw')[0].split('=')[1])
+                    if nsw == 0:
+                        nsw = 1
                 else:
-                    nsw = 0
+                    nsw = 1
                 if grep('OSZICAR','F=') != []:
                     ionicIteration = int(grep('OSZICAR','F=')[-1].split()[0])
                 else:
-                    ionicIteration = 0
-                if ionicIteration == nsw and electronicIteration == 60:
+                    ionicIteration = 1
+                if grep('INCAR','nelm') != []:
+                    maxelectronic = grep('INCAR','nelm')[0].split('=')[1]
+                else:
+                    maxelectronic = 60
+                if ionicIteration == nsw and int(electronicIteration) == int(maxelectronic):
                     return 'unconverged'
                     
                 ''' Let's first check to see if this is a static
@@ -166,7 +189,7 @@ class VASP:
                     return 'not setup'
                     
                 ''' Check finish tag for static calc'''
-                if static and self._check_tag_exists('OUTCAR', fTagStatic):  #Looks like it's done
+                if static and self._check_tag_exists('OUTCAR', fTagStatic):  #finish tag found
                     if finalenergyline != []:  #Let's double check
                         return 'done'
                     else:  # Apparently not,  why?
@@ -183,11 +206,15 @@ class VASP:
                     ''' Check how long since the last file write.  If it was recent
                      then we're probably running.'''
                     time = path.getmtime('OUTCAR')
-                    if (ctime - time) < 1800:  # If the OUTCAR was modified in the last 30 minutes
+                    if (ctime - time) < 3600:  # If the OUTCAR was modified in the last hour
                                               # the calculation is probably still running.
                         return 'running'
                     elif sgrcon:
+                        return 'sgrcon'
+                    elif generalerror:
                         return 'error'
+                    elif tooclose:
+                        return 'warning'
                     else:
                         return 'too long'
                     
@@ -216,7 +243,6 @@ class VASP:
 
     def buildFolder(self,runGetKPoints = True):
         from aBuild.calculators.vasp import POSCAR
-
         self.KPOINTS.rGP = runGetKPoints
         self.INCAR.writeINCAR()
         print("INCAR built")
@@ -235,7 +261,11 @@ class VASP:
 
         with open('POSCAR','r') as file:
             poslines = file.readlines()
-        nAtoms = sum([int(i) for i in poslines[5].split()])
+        if any(c.isalpha() for c in poslines[5].strip()):  #It's a CONTCAR
+            nAtoms = sum([int(i) for i in poslines[6].split()])
+        else:
+
+            nAtoms = sum([int(i) for i in poslines[5].split()])
         
         with open('OUTCAR', 'r') as file:
             lines = file.readlines()
@@ -246,8 +276,10 @@ class VASP:
             forces = []
 
         n = 0
+        found = False
         for line in lines:
             if line.rfind('TOTAL-FORCE') > -1:
+                found = True
                 singleItForces = []
                 for i in range(nAtoms):
                     singleItForces.append(np.array([float(f) for f in
@@ -257,7 +289,11 @@ class VASP:
                     msg.fatal('It appears that there are forces for more atoms than I was expecting!')
                 if allIonic:
                     forces.append(singleItForces)
+                
             n+=1
+        if not found:
+            msg.info("Couldn't find forces for this calc")
+            return None
         if not allIonic:
             forces = singleItForces
         if allIonic and len(forces) == 1:
@@ -320,6 +356,7 @@ class VASP:
                 self.crystal.results["stress"] = self.read_stress()
                 #self.POTCAR = POTCAR.from_POTCAR()
                 self.crystal.results["species"] = self.POTCAR.species
+                self.crystal.results["energypatom"] = self.crystal.results["energyF"]/self.crystal.nAtoms
                 if abs(self.crystal.results["energyF"]) > 1000:
                     self.crystal.results["warning"] = True
                 if 'pure' not in self.directory:
@@ -345,8 +382,10 @@ class VASP:
             pureVASP.read_results()
             pures.append(pureVASP)
 
-        
-        formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
+        try:
+            formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
+        except:
+            formationEnergy = 10000
         return formationEnergy
         
 class POTCAR:
@@ -684,15 +723,30 @@ class POSCAR(object):
         self.label = poscarlines[0].strip().split('\n')[0]
         self.latpar = poscarlines[1]
         self.Lv = poscarlines[2:5]
-        self.atom_counts = poscarlines[5].strip()
-        self.coordsys = poscarlines[6].split('\n')[0]
+
+        #CONTCARs have species names in the next line, but typical POSCARs dont.  Let's
+        # Figure out which one we have
+
+        if any(c.isalpha() for c in poscarlines[5].strip()):  #It's a CONTCAR
+            countsLine = 6
+            coordSysLine = 7
+            basisStartLine = 8
+            
+
+        else: #It's a POSCAR
+            countsLine = 5
+            coordSysLine = 6
+            basisStartLine = 7
+            
+        self.atom_counts = poscarlines[countsLine].strip()
+        self.coordsys = poscarlines[coordSysLine].split('\n')[0]
 
         nBas = sum(map(int, self.atom_counts.split()))
-        self.Bv = poscarlines[7:7+nBas]
+        self.Bv = poscarlines[basisStartLine:basisStartLine+nBas]
         
-        if 7 + 2*nBas < len(poscarlines):
+        if basisStartLine + 2*nBas < len(poscarlines):
             #We could still have concentration information in the POSCAR
-            self.concentrations = poscarlines[7+nBas:7+2*nBas]
+            self.concentrations = poscarlines[basisStartLine+nBas:basisStartLine+2*nBas]
         else:
             self.concentrations = ""
 

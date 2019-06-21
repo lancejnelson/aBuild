@@ -13,6 +13,10 @@ script_options = {
            "help": "Build input files for fitting."},
     "-report": {"action": "store_true",
            "help": "Build a report of the results of the calculations."},
+    "-errorhist": {"action": "store_true",
+           "help": "Build a report of the results of the calculations."},
+    "-chull": {"action": "store_true",
+           "help": "Build a report of the results of the calculations."},
     "-cif": {"action": "store_true",
            "help": "Build a cif file for the POSCAR specified by the -POSCAR tag"},
     "-rgk": {"action": "store_true",
@@ -21,6 +25,12 @@ script_options = {
            "help": "Which structure do you want to start with"},
     "-end": {"type": int, "default": None,
            "help": "Which structure do you want to start with"},
+    "-file": {"type": str, "default": None,
+           "help": "Specify a file as input"},
+    "-datafile": {"type": str, "default": None,
+           "help": "Specify a file as input"},
+    "-predictfile": {"type": str, "default": None,
+           "help": "Specify a file as input"},
     "-s": {"action": "store_true",
            "help": "Run the setup method for each database."},
     "-x": {"action": "store_true",
@@ -124,7 +134,11 @@ def run(args):
     if args.add:
         cdb.augmentTraining()
     if args.report:
-        cdb.gatherResults()
+        cdb.gatherResults(file=args.file)
+    if args.chull:
+        cdb.generateConvexHull(file = args.file)
+    if args.errorhist:
+        cdb.errorsReport(datafile = args.datafile, predictFile = args.predictfile)
 #    if args["s"]:
 #        cdb.setup(args["rerun"], args["dfilter"])
 #    if args["x"]:

@@ -148,7 +148,7 @@ class MTP(object):
         from subprocess import Popen
         from os import waitpid, rename,path
         
-        baseCommand = 'mlp relax relax.ini --cfg-filename=to-relax.cfg --save-relaxed=relaxed.cfg --save-unrelaxed=unrelaxed.cfg --log=relax_log.txt'
+        baseCommand = 'mlp relax relax.ini --cfg-filename=to_relax.cfg --save-relaxed=relaxed.cfg --save-unrelaxed=unrelaxed.cfg --log=relax_log.txt'
 
         if buildJob:
             if executeParams["ntasks"] > 1:
@@ -211,11 +211,13 @@ class MTP(object):
             enumdirs = glob("E.*")
            # activedirs = []
             activedirs = glob("A.*")
+            #puredirs = glob("pure*")
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-
-        print('Building dataset')
-        trainingSet = dataset(dirs,species,calculator='VASP')  #####
+        if dirs != []:
+            
+            print('Building dataset')
+            trainingSet = dataset(dirs,species,calculator='VASP')  #####
 
         if path.isfile(path.join(self.root,'train.cfg') ):
             msg.info('train.cfg file found!  Deleting and building from scratch.')
@@ -223,8 +225,14 @@ class MTP(object):
             
         with open(path.join(self.root,'train.cfg'),'a+') as f:
             for crystal in trainingSet.crystals:
-                print("Building: {}".format(crystal.title))
-                f.writelines('\n'.join(crystal.lines('mtptrain')))
+                if crystal.results["fEnth"] < 100 and crystal.minDist > 1.5:
+                    print("Building: {}".format(crystal.title))
+                    f.writelines('\n'.join(crystal.lines('mtptrain')))
+                else:
+                    print("Not adding structure {}.  Seems like an extreme one.".format(crystal.title))
+                    print("Energy: {}".format(crystal.results["energyF"]))
+                    print("MinDist: {}".format(crystal.minDist))
+                    
 
 
         self.write_blank_pot(len(species))
@@ -262,7 +270,7 @@ class MTP(object):
         # 4.  Build a relax.ini from template if it's not already there.
         # 5.  Run calc-grade
         # 6.  Build a submission script.
-        filePath = path.join(self.root,'to-relax.cfg')
+        filePath = path.join(self.root,'to_relax.cfg')
         #unrelaxedfilePath = path.join(fittingRoot,'unrelaxed.cfg')
 
         torelax = path.isfile(filePath)
@@ -352,7 +360,7 @@ class MTP(object):
                                 #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
                                 with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
                                     f.writelines('\n'.join(thisCrystal.lines('mtprelax') ) )
-                            elif thisCrystal.getAFMPlanes([1,0,0]) != []:
+                            elif thisCrystal.getAFMPlanes([1,0,0]):
                                 print("Original Crystal is AFM compatible")
                                 with open(path.join(self.root,'to-relax.cfg_' + str(start)),'a+') as f:
                                     f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
@@ -384,7 +392,7 @@ class MTP(object):
                         with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
                             f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
                         
-                    elif thisCrystal.getAFMPlanes([1,0,0]) != []:
+                    elif thisCrystal.getAFMPlanes([1,0,0]):
                         print("Original Crystal is AFM compatible")
                         with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
                             f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))

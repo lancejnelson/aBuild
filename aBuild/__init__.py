@@ -194,7 +194,7 @@ class Controller(object):
 
         newTraining = path.join(self.root,'fitting','mtp','new_training.cfg')
         trainingRoot = path.join(self.root,'training_set')
-        dSet = dataset(newTraining,self.species,lFormat = 'mlpselect')
+        dSet = dataset(newTraining,self.species,lFormat = 'mlp')
         dSet.buildFolders(trainingRoot,self.calculator,foldername = 'A')
         
     def statusReport(self):
@@ -207,7 +207,7 @@ class Controller(object):
             activedirs = glob("A.*")
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-        stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[]}
+        stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[],'sgrcon':[],'error':[]}
         for dir in dirs:
             thisVASP = VASP(dir,systemSpecies = self.species)
             stat[thisVASP.status()].append(dir.split('/')[-1])
@@ -220,38 +220,71 @@ class Controller(object):
         msg.info(' '.join(stat['not started']))
         msg.info('Not Setup (' + str(len(stat['not setup'])) + ')')
         msg.info(' '.join(stat['not setup']))
-        msg.info('Too Long (' + str(len(stat['too long'])) + ')')
+        msg.info('Too Long (' + str(len(stat['too long'])) + ')    (last write was > 1 hr ago) ')
         msg.info(' '.join(stat['too long']))
         msg.info('Warnings (' + str(len(stat['warning'])) + ')')
         msg.info(' '.join(stat['warning']))
-        msg.info('Not sure (' + str(len(stat['idk'])) + ')')
+        msg.info('Not sure (' + str(len(stat['idk'])) + ')  (Found finish tags but couldn''t find final energy.  It''s probably in the process of finishing.)')
         msg.info(' '.join(stat['idk']))
         msg.info('Unconverged (' + str(len(stat['unconverged'])) + ')')
         msg.info(' '.join(stat['unconverged']))
+        msg.info('SGRCON error (' + str(len(stat['sgrcon'])) + ')')
+        msg.info(' '.join(stat['sgrcon']))
+        msg.info('Unknown error (' + str(len(stat['error'])) + ')')
+        msg.info(' '.join(stat['error']))
 
-    def gatherResults(self):
+    def gatherResults(self,file=None, folder = None):
         from os import path
         from glob import glob
         from aBuild.database.dataset import dataset
+        if file is not None:
+            dataSet = dataset(file,self.species,lFormat = 'mlp',)
+            dataSet.writeReport('mlp')
+        else:
+            trainingRoot = path.join(self.root, 'training_set')
+            with chdir(trainingRoot):
+                enumdirs = glob("E.*")
+                activedirs = glob("A.*")
+                pures = glob("pure*")
 
-        trainingRoot = path.join(self.root, 'training_set')
-        with chdir(trainingRoot):
-            enumdirs = glob("E.*")
-            activedirs = glob("A.*")
-            pures = glob("pure*")
-
-        dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs + pures]
-        trainingSet = dataset(dirs,self.species,calculator = self.calculator["active"].upper())
-        trainingSet.writeReport()
+            dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs + pures]
+            trainingSet = dataset(dirs,self.species,calculator = self.calculator["active"].upper())
+            trainingSet.writeReport('vasp')
 
 
-    def generateConvexHull(self):
+    def generateConvexHull(self,file='dataReport_VASP.txt',plotAll = True):
         from os import path
         from aBuild.database.dataset import dataset
-        dataFile = path.join(self.root,'dataReport_VASP.txt')
+        dataFile = path.join(self.root,file)
         if not path.isfile(dataFile):
-            self.gatherResults()
+            msg.fatal('data file does not exist')
 
         data = dataset(dataFile,self.species)
-        data.generateConvexHullPlot()
+        data.generateConvexHullPlot(plotAll = plotAll)
             
+    def errorsReport(self,datafile = None, predictFile = None):
+        from aBuild.database.dataset import dataset
+        from numpy.linalg import norm
+        from numpy import average,array
+
+        dataSet = dataset(datafile,self.species,lFormat = 'mlp')
+        predictSet = dataset(predictFile,self.species,lFormat = 'mlp')
+
+        diffsEnergy = []
+        diffsForces = []
+        for i in dataSet.crystals:
+            for j in predictSet.crystals:
+                if j.title.strip() == i.title.strip():
+                    print("Found match")
+                    diffsEnergy.append(i.results["energyF"] - j.results["energyF"])
+                    diffsForces.append(average(norm(array(i.results["forces"]) - array(j.results["forces"]), axis = 1)))
+        from matplotlib import pyplot
+        pyplot.subplot(121)
+        pyplot.hist(diffsEnergy,bins = 30)
+        pyplot.subplot(122)
+        pyplot.hist(diffsForces,bins = 30)
+        pyplot.savefig('errorPlot.png')
+        #pyplot.savefig('errorForces.png')
+        
+        
+        
