@@ -249,7 +249,20 @@ class Crystal(object):
                     # self.species = systemSpecies
                 self.nTypes = len(self.atom_counts)
                 # else:
+
                 #self.species = systemSpecies
+
+
+    def randomDisplace(self):
+        from numpy.random import randn
+        msg.warn("Warning:  You are about to move basis atoms around")
+
+        
+        for ibv,bv in enumerate(self.Bv_cartesian):
+            disp = 0.05 * randn(3)
+            print(disp, 'disp')
+            self.basis[ibv] =  bv + disp
+        self.coordsys = 'C'
         
     def _init_file(self,filepath):
 
