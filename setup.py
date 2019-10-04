@@ -1,5 +1,8 @@
 #!/usr/bin/env python
+
+
 try:
+    #Add some code
     from setuptools import setup
     args = {}
 except ImportError:
