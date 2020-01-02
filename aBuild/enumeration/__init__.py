@@ -167,7 +167,7 @@ class Enumerate:
         
         from jinja2 import Environment, PackageLoader  # Package for building files from a template
 
-        knaryDict = {2:" Binary", 3: " Ternary", 4: " Quaternary"}
+        knaryDict = {2:" Binary", 3: " Ternary", 4: " Quaternary", 5: "Quinary"}
         settings = {}
         settings["title"] = self.lattice.lattice_name  + knaryDict[self.knary] 
         settings["template"] = "struct_enum.in"

@@ -4,7 +4,6 @@ pyparsing
 termcolor
 six
 numpy
-phonopy
 requests
 beautifulsoup4
 tqdm
@@ -12,5 +11,4 @@ html5lib
 mpld3
 phenum
 h5py
-lazy_import
 seekpath

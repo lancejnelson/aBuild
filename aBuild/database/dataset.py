@@ -146,7 +146,8 @@ class dataset:
                 nCrystals += 1
                 
                 thisCrystal = Crystal(structlines,self.species,lFormat = 'mlp')
-                thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
+                print(thisCrystal.results, 'results')
+#                thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
                 if thisCrystal.results == None:
                     if thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
@@ -236,6 +237,7 @@ class dataset:
             calculator[calculator["active"]]["species"] = self.species
             
             # Initialize the calculation object
+            print(calculator[calculator["active"]], 'check here')
             thisCalc = lookupCalc[calculator["active"]](calculator[calculator["active"]])
 #            thisCalc = lookupCalc[calculator["active"]](lookupSpecs[calculator["active"]](crystal))
 
@@ -258,7 +260,7 @@ class dataset:
             
 
         # Build the submission script
-        exdir = path.join(buildpath,'E.')
+        exdir = path.join(buildpath,'A.')
         mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = startPoint,arrayEnd = configIndex - 1)
         with chdir(buildpath):
             print('Building job file')

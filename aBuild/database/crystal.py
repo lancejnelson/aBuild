@@ -236,16 +236,21 @@ class Crystal(object):
             # atomic system species are missing from this particular crystal.  We do this by augmenting zeros
             # to atom_counts at the appropriate location.  
             elif len(crystalSpecies) != len(systemSpecies):
+                print(crystalSpecies, systemSpecies)
                 from numpy import insert
                 lacking = list(set(systemSpecies) - set(crystalSpecies))
-                indices = [systemSpecies.index(x) for x in lacking]
+                indices = [systemSpecies.index(x) for x in sorted(lacking,reverse = True)]
+                print(sorted(lacking,reverse=True), 'lacking')
+                print(indices, 'indices')
                 for idx,ele in enumerate(indices):
-                    self.atom_counts = insert(self.atom_counts,ele + idx,0)
+                    print(self.atom_counts, 'atom counts')
+                    print(ele, idx, 'Adding zero here')
+                    self.atom_counts = insert(self.atom_counts,ele,0) # + idx ???
                 if len(lacking) > 1:
                     print(" I haven't tested this case, can you verify that it's working the way it should")
                     print("The system species is {}, and the crystal species is {} and our new atom counts is {}.".format( systemSpecies,crystalSpecies,self.atom_counts))
-                    import sys
-                    sys.exit()
+#                    import sys
+#                    sys.exit()
                     # self.species = systemSpecies
                 self.nTypes = len(self.atom_counts)
                 # else:

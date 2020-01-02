@@ -1,6 +1,9 @@
+README.md
+setup.py
 aBuild/__init__.py
 aBuild/config.py
 aBuild/io.py
+aBuild/jobs.py
 aBuild/msg.py
 aBuild/utility.py
 aBuild.egg-info/PKG-INFO
@@ -10,7 +13,11 @@ aBuild.egg-info/requires.txt
 aBuild.egg-info/top_level.txt
 aBuild/calculators/__init__.py
 aBuild/calculators/data.py
+aBuild/calculators/espresso.py
+aBuild/calculators/lammps.py
 aBuild/calculators/vasp.py
 aBuild/database/__init__.py
 aBuild/database/crystal.py
+aBuild/database/dataset.py
 aBuild/fitting/mtp.py
+aBuild/scripts/builder.py

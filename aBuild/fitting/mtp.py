@@ -236,6 +236,7 @@ class MTP(object):
 
 
         self.write_blank_pot(len(species))
+        self.calc_grade()
         self.train(self.settings["execution"])
 
         
@@ -280,7 +281,11 @@ class MTP(object):
         if not torelax:  #This must be the first iteration
             print('Building a new to-relax.cfg file')
             self.build_ToRelax(enumDicts,species,AFM = AFM,start = start,end = end)
-
+            # Write a bland potential file if this is the firt iteration
+            self.write_blank_pot(len(species))
+            # Create an empty training set if this is the first iteration
+            train = path.join(self.root,'train.cfg')
+            open(train, 'a').close()
         # 2.
         else: # What iteration is it?
             if freshStart:
@@ -331,7 +336,7 @@ class MTP(object):
         from aBuild.database.crystal import Crystal
         from os import remove,path
         print('Building to-relax.cfg')
-
+        print(enumDicts)
         nEnums = len(enumDicts)
         knary = len(species)
         for ilat  in range(nEnums):
@@ -378,6 +383,7 @@ class MTP(object):
                                # break
             else:
                 enumLattice = Enumerate(enumDicts[ilat])
+                print(end, 'end')
                 if end == None:
                     end = enumLattice.nConfigs + 1
                     filetag = ''
@@ -389,6 +395,7 @@ class MTP(object):
                     enumLattice.generatePOSCAR(struct) 
                     thisCrystal = Crystal(path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct)),species)
                     if not AFM:
+                        print('Writing to file!!!!!', end)
                         with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
                             f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
                         
@@ -413,7 +420,7 @@ class MTP(object):
 
                     delpath = path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct))
                     remove(delpath)
-
+                end = None
     # This routine sets up for selection new structures to add to the
     # training set.  The main thing we need from the relaxation step are
     # the candidate.cfg_* files.  So we will concatenate them all into one

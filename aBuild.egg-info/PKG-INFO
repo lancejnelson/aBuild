@@ -6,7 +6,9 @@ Home-page: https://github.com/lancejnelson/aBuild
 Author: Lance J Nelson
 Author-email: lancejnelson@gmail.com
 License: MIT
-Description: UNKNOWN
+Description: # aBuild
+        Python package for automating first-principles calculations and constructing materials models
+        
 Platform: UNKNOWN
 Classifier: Development Status :: 4 - Beta
 Classifier: Intended Audience :: Science/Research
