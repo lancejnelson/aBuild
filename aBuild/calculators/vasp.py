@@ -720,6 +720,7 @@ class POSCAR(object):
 
         :arg poscarlines: a list of strings from the POSCAR file.
         """
+        print(poscarlines)
         self.label = poscarlines[0].strip().split('\n')[0]
         self.latpar = poscarlines[1]
         self.Lv = poscarlines[2:5]

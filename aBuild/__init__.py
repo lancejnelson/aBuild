@@ -181,10 +181,12 @@ class Controller(object):
         trainingRoot = path.join(self.root, 'training_set')
 
         self.dataset = 'gss'
+        print(end,' END')
         thisMTP = MTP(fittingRoot,settings=self.fitting)
         handler = {'setup_train':lambda: thisMTP.setup_train(trainingRoot,self.species),
                    'setup_relax':lambda:thisMTP.setup_relax(self.enumDicts,self.species,AFM = 'AFM' in self.calculator[self.calculator["active"]].keys(), start = start,end = end),
                     'setup_select_add':lambda :thisMTP.setup_select()}
+        print(self.enumDicts, 'enumdicts')
         handler[tag]()
 
 
