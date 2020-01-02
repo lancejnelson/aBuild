@@ -347,7 +347,7 @@ class VASP:
         return stress
 
     def read_results(self, allElectronic = False, allIonic=False):
-        if self.directory is not None and self.status() is 'done':
+        if self.directory is not None and self.status() in ['done','unconverged']:
             with chdir(self.directory):
                 self.crystal.results = {}
                 self.crystal.results["warning"] = False

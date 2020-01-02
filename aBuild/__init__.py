@@ -289,4 +289,18 @@ class Controller(object):
         #pyplot.savefig('errorForces.png')
         
         
+
+    def randomDisplacements(self,POSCAR):
+        from os import path
+        
+        from aBuild.database.crystal import Crystal
+
+        toRelax = path.join(self.root,'fitting','mtp','to_relax.cfg')
+        for i in range(1000):
+            thisCrystal = Crystal(POSCAR,systemSpecies = self.species)
+            thisCrystal.randomDisplace()
+            print(thisCrystal.lines('mtprelax'))
+            with open(toRelax, 'a+') as f:
+                f.writelines('\n'.join(thisCrystal.lines('mtprelax')))
+                
         

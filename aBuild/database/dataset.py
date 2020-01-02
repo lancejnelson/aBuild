@@ -117,7 +117,7 @@ class dataset:
         del lines[:4]
         self.formationenergies = [ float(x.split()[-5]) for x in lines]
         self.concs = [ float(x.split()[-4]) for x in lines]
-        
+        self.titles = [' '.join(x.split()[:-7]) for x in lines]
     def _init_mlp(self,datafile):
         from aBuild.database.crystal import Crystal
         import os
@@ -134,24 +134,23 @@ class dataset:
         puresDict = {}
         for ispec,spec in enumerate(self.species):
             pures[ispec].read_results()
-            puresDict[spec] = pures[ispec].crystal.results["energypatom"]
-
+#            puresDict[spec] = pures[ispec].crystal.results["energypatom"]
+        print(pures, 'pures')
         for index,line in enumerate(lines):
-            print("Processed {} crystals".format(nCrystals))
             if 'BEGIN' in line:
                 indexStart = index
             elif 'END' in line:
                 indexEnd = index
                 structlines = lines[indexStart:indexEnd + 1]
+                print("Processed {} crystals".format(nCrystals))
                 nCrystals += 1
                 
                 thisCrystal = Crystal(structlines,self.species,lFormat = 'mlp')
-                print(thisCrystal.results, 'results')
-#                thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
                 if thisCrystal.results == None:
                     if thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
                 else:
+                    thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
                     if thisCrystal.results["energyF"] < 100 and thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
                     else:
@@ -331,6 +330,7 @@ class dataset:
         from scipy.spatial import ConvexHull
         from numpy import array,append
         from matplotlib import pyplot
+        import matplotlib
         #with open('dataReport_VASP.txt','r') as f:
         #    lines = f.readlines()
 
@@ -342,6 +342,8 @@ class dataset:
  #       print(data.shape)
         data.append([0.0,0.0])
         data.append([1.0,0.0])
+        self.titles.append('pure')
+        self.titles.append('pure')
         data = array(data)
 #        append(data,array([ 0.0 , 0.0 ]),axis=0)
 #        data = append(data,array([ 1.0 , 0.0]),axis = 0)
@@ -358,14 +360,27 @@ class dataset:
         print(hull.vertices, 'verts')
         print(len(data))
         vertices = sorted(hull.vertices,key = lambda k: data[k][0])
+        print(len(self.titles))
+        print([self.titles[x] for x in vertices])
+
+        print(vertices,' verts')
+        pyplot.figure(figsize = (15,10))
+        if plotAll:
+            pyplot.plot([x[0] for x in data],[x[1] for x in data],'r+')
         for ivert,vertex in enumerate(vertices):
             if data[vertex,1] <= 0:
                 plotConcs.append(data[vertex,0])
                 plotEnergies.append(data[vertex,1])
-            
-        pyplot.plot(plotConcs,plotEnergies,'k-')
-        if plotAll:
-            pyplot.plot([x[0] for x in data],[x[1] for x in data],'r+')
+        pyplot.plot(plotConcs,plotEnergies,'xk-',linewidth=2.3,markersize = 8)
+        font = {'family':'normal',
+                    'weight': 'bold',
+                    'size': 22}
+        matplotlib.rc('font',**font)
+        pyplot.xlabel(' Ag', fontsize = 24)
+        pyplot.ylabel("Formation Energy (eV/atom)", fontsize = 24)
+        pyplot.xticks(fontsize=22)
+        pyplot.yticks(fontsize=22)
+        pyplot.title("Convex Hull Plot")
         pyplot.savefig('chull.png')
         
 
