@@ -175,3 +175,9 @@ def _chop_all(epsilon, i):
 
 
     
+def fileinDir(searchfile,dir, or_close=False):
+    from os import listdir
+    if not or_close:
+        return True in [searchfile == x for x  in listdir(dir)]
+    else:
+        return True in [searchfile in x for x  in listdir(dir)]

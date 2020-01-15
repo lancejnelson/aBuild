@@ -1,6 +1,6 @@
 
 from aBuild import msg
-from aBuild.utility import chdir, _get_reporoot
+from aBuild.utility import chdir, _get_reporoot,fileinDir
 
 class dataset:
 
@@ -123,6 +123,7 @@ class dataset:
         import os
         from os import path
         from aBuild.calculators.vasp import VASP
+        from aBuild.calculators.aflow import AFLOW
         with open(datafile,'r') as f:
             lines = f.readlines()
 
@@ -130,12 +131,17 @@ class dataset:
         nCrystals = 0
         # Get information for pures so I can calculate formation energies 
         root = os.getcwd()
-        pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
+        if fileinDir('aflow',path.join(root,'training_set','pure'+self.species[0]), or_close = True):
+            pures = [AFLOW(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
+        else:
+            pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
+
         puresDict = {}
         for ispec,spec in enumerate(self.species):
             pures[ispec].read_results()
 #            puresDict[spec] = pures[ispec].crystal.results["energypatom"]
         print(pures, 'pures')
+        print(pures[0].crystal.results, pures[1].crystal.results)
         for index,line in enumerate(lines):
             if 'BEGIN' in line:
                 indexStart = index
@@ -150,6 +156,7 @@ class dataset:
                     if thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
                 else:
+                    print(thisCrystal.results, pures[0].crystal.results, pures[1].crystal.results)
                     thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
                     if thisCrystal.results["energyF"] < 100 and thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
@@ -206,6 +213,7 @@ class dataset:
     def buildFolders(self,buildpath,calculator,runGetKpoints = True,foldername = 'E'):
         from os import path
         from aBuild.calculators.vasp import VASP
+        from aBuild.calculators.aflow import AFLOW
         from aBuild.calculators.lammps import LAMMPS
         from aBuild.calculators.espresso import ESPRESSO
         from aBuild.jobs import Job
@@ -217,16 +225,18 @@ class dataset:
                 print('Made path:',buildpath)
         configIndex = startPoint = self.starting_point(buildpath)
 
-        lookupCalc = {'vasp': lambda specs: VASP(specs),
-                  'qe': lambda specs: ESPRESSO(specs,self.species),
+        lookupCalc = {'aflow': lambda specs: AFLOW(specs),
+                      'vasp': lambda specs: VASP(specs),
+                      'qe': lambda specs: ESPRESSO(specs,self.species),
                       'lammps': lambda specs: LAMMPS(specs,self.species)}
 
-        lookupSpecs = {'vasp': lambda crystal: {"incar":calculator["vasp"]["incar"],"kpoints":calculator["vasp"]["kpoints"], 'potcar':calculator["vasp"]["potcars"],"crystal":crystal},
-                  'qe': lambda crystal : {"crystal":crystal, "pseudopotentials":calculator["qe"]["pseudopotentials"]},
-                      'lammps': lambda crystal: {"crystal":crystal, "potential":calculator["lammps"]["potential"]} }
+#        lookupSpecs = {'vasp': lambda crystal: {"incar":calculator["vasp"]["incar"],"kpoints":calculator["vasp"]["kpoints"], 'potcar':calculator["vasp"]["potcars"],"crystal":crystal},
+ #                 'qe': lambda crystal : {"crystal":crystal, "pseudopotentials":calculator["qe"]["pseudopotentials"]},
+  #                    'lammps': lambda crystal: {"crystal":crystal, "potential":calculator["lammps"]["potential"]} }
 
-        lookupBuild = {'vasp': lambda obj: obj.buildFolder(runGetKPoints = runGetKpoints),
-                  'qe': lambda obj:obj.buildFolder(),
+        lookupBuild = {'aflow': lambda obj: obj.buildFolder(),
+                       'vasp': lambda obj: obj.buildFolder(runGetKPoints = runGetKpoints),
+                       'qe': lambda obj:obj.buildFolder(),
                       'lammps': lambda obj: obj.buildFolder()} 
 
         for crystal in self.crystals:

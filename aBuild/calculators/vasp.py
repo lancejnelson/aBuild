@@ -1,6 +1,7 @@
 from os import path
 from aBuild import msg # messaging module
 from aBuild.utility import chdir
+#from aBuild.calculators import aflow
 import os
 import sys
 import numpy as np
@@ -41,6 +42,7 @@ class VASP:
                 self.handleSpecialTags(specs)
                     
                 self.INCAR = INCAR(specs["incar"])
+                
             else:
                 msg.fatal("I don't have all the necessary information to initialize: {}".format(specs.keys()))
         #Initialize from a path
@@ -53,7 +55,6 @@ class VASP:
             msg.fatal("Unable to initialize a VASP object from the data that you passed in:", specs)
         if directory is not None:
             self.directory = directory
-
 
     def _all_present(self,specs):
         required = ["incar","potcars","kpoints","crystal","species"]
@@ -97,7 +98,7 @@ class VASP:
             idxKeep = list(where( self.crystal.atom_counts > 0)[0])
             self.POTCAR.species = list(array(self.POTCAR.species)[idxKeep])
             self.crystal.atom_counts = self.crystal.atom_counts[idxKeep]
-            
+            self.crystal.species = self.POTCAR.species
     def _check_tag_exists(self,file,tag):
         from aBuild.utility import grep
 
@@ -141,6 +142,7 @@ class VASP:
                 if they aren't, no need to proceed, just return
                 'not setup'
             '''
+            
             if not inputs:
                 return 'not setup'
 
@@ -252,10 +254,11 @@ class VASP:
         self.crystal.write('POSCAR')
         print("POSCAR built")
         self.KPOINTS.writeKPOINTS()
-        
         print("KPOINTS built")
         self.POTCAR.writePOTCAR()
         #print("POTCAR built")
+
+        
 
     def read_forces(self,allIonic = True):
 
@@ -343,7 +346,7 @@ class VASP:
         for line in open('OUTCAR'):
             if line.find(' in kB  ') != -1:
                 stress = -np.array([float(a) for a in line.split()[2:]])
-                stress = stress[[0, 1, 2, 4, 5, 3]] * 1e-1 * .00624151# * ase.units.GPa.. Gets me to Giga Pascals
+                stress = stress[[0, 1, 2, 4, 5, 3]] * 1e-1 #* .00624151# * ase.units.GPa.. Gets me to Giga Pascals
         return stress
 
     def read_results(self, allElectronic = False, allIonic=False):
@@ -367,7 +370,7 @@ class VASP:
             print(self.status(), 'not reading results')
             self.crystal.results = None
             msg.info("Unable to extract necessary information from directory! ({})".format(self.directory))
-    
+            
     def add_to_results(self,key,item):
         if self.crystal.results is None:
             self.crystal.results = {}
@@ -401,6 +404,10 @@ class POTCAR:
             if sorted(self.species,reverse = True) != self.species:
                 msg.fatal('Species are not in reverse alphabetical order... Problem?')
             self.setups = specs["setups"]
+            if 'build' in specs:
+                self.build = specs["build"]
+            else:
+                self.build = 'manual'
         elif isinstance(specs,str):
             self._init_path(specs)
 
@@ -418,8 +425,13 @@ class POTCAR:
             self.xc = None
             self.directory = None
             return
-        with open(filepath,'r') as f:
-            lines = f.readlines()
+        if 'xz' in filepath:
+            import lzma
+            with lzma.open(filepath,'rt') as f:
+                lines = f.readlines()
+        else:
+            with open(filepath,'r') as f:
+                lines = f.readlines()
             
         species = []
         setups = {}
@@ -462,7 +474,8 @@ class POTCAR:
             return False
         
     def writePOTCAR(self,filename = 'POTCAR'):
-
+        if self.build == 'aflow':
+            return
         if not self._potcarsOK():
             ermsg = "Can't find the POTCARS you specified: {}".format(self.versions)
             msg.fatal(ermsg)
@@ -497,17 +510,20 @@ class INCAR:
         self.tags = {}
 
         for line in lines:
-            self.tags[line.split('=')[0]] = line.split('=')[1]
+            if line[0] != '#':
+                self.tags[line.split('=')[0]] = line.split('=')[1]
 
 
     def setDefaultTags(self):
         self.tags = {}
-        self.tags["prec"] = "a"
+        self.tags["prec"] = "High"
         self.tags["sigma"] = "0.1"
-        self.tags["GGA"] = "PE"
-        self.tags["ISMEAR"] = "1"
+        self.tags["ISMEAR"] = "1" 
+        self.tags["ISYM"] = "2"  # Symmetry on
+        self.tags["ALGO"] = "Normal"
         self.tags["LWAVE"] = ".FALSE."
         self.tags["LREAL"] = "auto"
+        self.tags["LORBIG"] = "10"
         
         #    def processTags(self,tags):
         #for key,val in tags.items():
@@ -515,7 +531,8 @@ class INCAR:
         #pass
         
     def writeINCAR(self,filename='INCAR'):
-
+        if 'build' in self.tags.keys() and self.tags["build"] == 'aflow':
+            return
         lines = []
         for key,val in self.tags.items():
             lines.append(''.join([key," = ",str(val),'\n']))
@@ -544,8 +561,13 @@ class KPOINTS:
             self.method = None
             self.includeGamma = None
             return
-        with open(filepath,'r') as f:
-            lines = f.readlines()
+        if 'xz' in filepath:
+            import lzma
+            with lzma.open(filepath,'rt') as f:
+                lines = f.readlines()
+        else:
+            with open(filepath,'r') as f:
+                lines = f.readlines()
         if 'Server' in lines[0].split():
             self.method = 'mueller'
             densityLocation = lines[0].split().index('Angstroms.') - 1
@@ -710,9 +732,16 @@ class POSCAR(object):
 
     def _init_file(self, filename):
         """Initializes the POSCAR lines from a file."""
-        with open(os.path.abspath(filename)) as f:
-            poscarlines = f.readlines()
+        if 'xz' in filename:
+            import lzma
+            with lzma.open(os.path.abspath(filename),'rt') as f:
+                poscarlines = f.readlines()
 
+        else:
+            with open(os.path.abspath(filename),'r') as f:
+                poscarlines = f.readlines()
+
+        print(poscarlines, 'pclines')
         self.from_string(poscarlines)
 
     def from_string(self, poscarlines):
@@ -720,7 +749,6 @@ class POSCAR(object):
 
         :arg poscarlines: a list of strings from the POSCAR file.
         """
-        print(poscarlines)
         self.label = poscarlines[0].strip().split('\n')[0]
         self.latpar = poscarlines[1]
         self.Lv = poscarlines[2:5]
@@ -750,7 +778,7 @@ class POSCAR(object):
             self.concentrations = poscarlines[basisStartLine+nBas:basisStartLine+2*nBas]
         else:
             self.concentrations = ""
-
+        print('here')
     def _init_lattice(self, lattice):
         """Initializes the POSCAR lines from a Lattice instance."""
         self.label = "Lattice PosCar"

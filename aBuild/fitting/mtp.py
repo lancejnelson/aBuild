@@ -394,33 +394,36 @@ class MTP(object):
                     print("Lattice",lat, "structure:",struct)
                     enumLattice.generatePOSCAR(struct) 
                     thisCrystal = Crystal(path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct)),species)
-                    if not AFM:
-                        print('Writing to file!!!!!', end)
-                        with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
-                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
-                        
-                    elif thisCrystal.getAFMPlanes([1,0,0]):
-                        print("Original Crystal is AFM compatible")
-                        with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
-                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
-                    else:
-                        print("Checking super-periodics")
-                        
-                        superCrystal = thisCrystal.superPeriodics(2)
-                        if superCrystal != []:
-                            print('Found a super-Periodic that works')
-                            with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
-                                f.writelines('\n'.join(superCrystal.lines('mtprelax') ))
-                            
-                        
-                    #                    print(thisCrystal.appMinDist,' approp Min Dist')
- #                   print(thisCrystal.minDist, 'actual min dist')
-#                    with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
-#                        f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+
+
+                    # The code below was developed during time at INL.  It was used to find AFM compatible structures
+#                    if not AFM:
+#                        print('Writing to file!!!!!', end)
+#                        with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
+#                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+#                        
+#                    elif thisCrystal.getAFMPlanes([1,0,0]):
+#                        print("Original Crystal is AFM compatible")
+#                        with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
+#                            f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
+#                    else:
+#                        print("Checking super-periodics")
+#                        
+#                        superCrystal = thisCrystal.superPeriodics(2)
+#                        if superCrystal != []:
+#                            print('Found a super-Periodic that works')
+#                            with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
+#                                f.writelines('\n'.join(superCrystal.lines('mtprelax') ))
+#                            
+#                        
+#                    #                    print(thisCrystal.appMinDist,' approp Min Dist')
+                    #print(thisCrystal.minDist, 'actual min dist')
+                    with open(path.join(self.root,'to-relax.cfg' + filetag),'a+') as f:
+                        f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
 
                     delpath = path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct))
                     remove(delpath)
-                end = None
+                #end = None
     # This routine sets up for selection new structures to add to the
     # training set.  The main thing we need from the relaxation step are
     # the candidate.cfg_* files.  So we will concatenate them all into one

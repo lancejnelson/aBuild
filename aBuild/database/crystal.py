@@ -281,6 +281,7 @@ class Crystal(object):
             
     def _init_lines(self,lines,linesFormat):
         if linesFormat == 'mlp':
+            print('Made it here')
             self.fromMLP(lines)
 
     def _init_dict(self,crystalDict):
@@ -631,8 +632,10 @@ class Crystal(object):
     @property
     def basis_lines(self):
         """Return \n joined basis vector text lines."""
-        return '\n'.join( [' '.join(map(str,x)) for x in self.basis])
-
+        species = []
+        for i,n in enumerate(self.atom_counts):
+            species += [self.species[i] ] * n 
+        return '\n'.join( [' '.join(list(map(str,y)) + [species[x]] ) for x,y in enumerate(self.basis)])
 
     def mtpLines(self,relax = False):
         import numpy as np
@@ -801,7 +804,7 @@ class Crystal(object):
  
         except:
             raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
-            
+        print(self.nTypes, 'n Types')
 
     @property
     def reportline(self):
@@ -856,6 +859,7 @@ class Crystal(object):
         self.results = {}
         self.lattice = array([list(map(float,x.split())) for x in lines[4:7]])
         self.basis = array([list(map(float,x.split()[2:5])) for x in lines[8:8 + nAtoms]])
+        print(self.lattice, self.basis, 'here')
         self.nAtoms = len(self.basis)
         self.coordsys = 'C'
         self.atom_types = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
