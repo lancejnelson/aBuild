@@ -1,5 +1,6 @@
 from os import path
 from aBuild import msg
+from aBuild.utility import fileinDir
 import os
 import ase
 
@@ -86,7 +87,6 @@ class Lattice:
 
         # If the input is a dictionary, I'm probably passing all of the needed
         # information (lv, bv, etc) in explicitly
-        print(specs,' specs')
         if isinstance(specs["lattice"], list):
             self._init_dict(specs)
         # If the input is a string, I'm just specifying a canonical lattice and I
@@ -171,10 +171,11 @@ class Crystal(object):
         if isinstance(crystalSpecs,dict):  # When the crystal info is given in a dictionary
             self._init_dict(crystalSpecs)
         elif isinstance(crystalSpecs,str): # Read a file with (probably poscar)
-            print('initializing from a file')
+            print('initializing Crystal object from a file')
+            self.directory = crystalSpecs
             self._init_file(crystalSpecs)
         elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
-            print('initializing from a list')
+            print('initializing Crystal object from a list')
             self._init_lines(crystalSpecs, lFormat)
             
 #        self.results = None
@@ -187,7 +188,6 @@ class Crystal(object):
         if self.nAtoms != len(self.basis):
             msg.fatal("We have a problem")
 
-            #        print("Before, the atom counts was {}.".format(self.atom_counts)) 
         self._add_zeros(systemSpecies,crystalSpecies)
         
         #print("After, the atom counts was {}.".format(self.atom_counts)) 
@@ -236,15 +236,10 @@ class Crystal(object):
             # atomic system species are missing from this particular crystal.  We do this by augmenting zeros
             # to atom_counts at the appropriate location.  
             elif len(crystalSpecies) != len(systemSpecies):
-                print(crystalSpecies, systemSpecies)
                 from numpy import insert
                 lacking = list(set(systemSpecies) - set(crystalSpecies))
                 indices = [systemSpecies.index(x) for x in sorted(lacking,reverse = True)]
-                print(sorted(lacking,reverse=True), 'lacking')
-                print(indices, 'indices')
                 for idx,ele in enumerate(indices):
-                    print(self.atom_counts, 'atom counts')
-                    print(ele, idx, 'Adding zero here')
                     self.atom_counts = insert(self.atom_counts,ele,0) # + idx ???
                 if len(lacking) > 1:
                     print(" I haven't tested this case, can you verify that it's working the way it should")
@@ -265,12 +260,14 @@ class Crystal(object):
         
         for ibv,bv in enumerate(self.Bv_cartesian):
             disp = 0.05 * randn(3)
-            print(disp, 'disp')
             self.basis[ibv] =  bv + disp
         self.coordsys = 'C'
         
+
+
     def _init_file(self,filepath):
 
+        
         if 'poscar' in filepath.lower():
             self.from_poscar(filepath)
         elif 'input.in' in filepath.lower():
@@ -281,7 +278,6 @@ class Crystal(object):
             
     def _init_lines(self,lines,linesFormat):
         if linesFormat == 'mlp':
-            print('Made it here')
             self.fromMLP(lines)
 
     def _init_dict(self,crystalDict):
@@ -788,23 +784,22 @@ class Crystal(object):
             self.atom_types = []
             for i in typesList:
                 self.atom_types += i
-        
+            
             self.latpar = float(lines.latpar.split()[0])
             if self.latpar == 1.0 or self.latpar < 0:
                 self.latpar = None
             #print(self.latpar, 'lat par read in')
             self.coordsys = lines.coordsys
-#            self.title  = lines.label
-            if len(lines.label) > 50:
-                self.title = path.split(filepath)[0].split('/')[-1] + '_proto'
-            else:
-                self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
+            #            self.title  = lines.label
+#            if len(lines.label) > 50:
+ #               self.title = path.split(filepath)[0].split('/')[-1] + '_proto'
+ #           else:
+            self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
             self.nAtoms = sum(self.atom_counts)
             self.nTypes = len(self.atom_counts)
  
         except:
-            raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
-        print(self.nTypes, 'n Types')
+            raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(self.filePath))
 
     @property
     def reportline(self):
@@ -859,7 +854,6 @@ class Crystal(object):
         self.results = {}
         self.lattice = array([list(map(float,x.split())) for x in lines[4:7]])
         self.basis = array([list(map(float,x.split()[2:5])) for x in lines[8:8 + nAtoms]])
-        print(self.lattice, self.basis, 'here')
         self.nAtoms = len(self.basis)
         self.coordsys = 'C'
         self.atom_types = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
@@ -893,7 +887,6 @@ class Crystal(object):
 #        self.set_latpar()
         self.latpar = 1.0  # MLP files are formatted with no lattice parameter.  It's
                            # already built into the lattice vectors.
-        print(self.latpar, 'latpar')
 #        self.lattice = self.lattice / self.latpar  # I think I did this to ensure that the lattice
                                                     # vectors didn't change but I know that the lattice
                                                     # parameter is just 1.0 for MLP formatting.
@@ -963,11 +956,6 @@ class Crystal(object):
         combs =  [x for x in product(range(-4,4),repeat = 3)]
         latticeVecCombinations = einsum('ab,bd->ad', combs,self.lattice*self.latpar)
         basisAtoms = [x + latticeVecCombinations for x in self.Bv_cartesian]
-#        print(self.Bv_cartesian, 'cartesian bv')
-#        print(latticeVecCombinations, 'translates')
-##        print(basisAtoms, 'result')
- #       import sys
- #       sys.exit()
         count = 1
         for lattice in keeps:
 

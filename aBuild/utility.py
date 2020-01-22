@@ -19,13 +19,18 @@ def chdir(target):
     finally:
         chdir(current)
 
-def grep(file,tag):
+def grep(filename,tag):
 
     from os import waitpid
     from subprocess import Popen,PIPE
 
-    with open(file,'r') as f:
-        lines = f.readlines()
+    if 'xz' in filename:
+        import lzma
+        with lzma.open(filename,'rt') as f:
+            lines = readlines()
+    else:
+        with open(filename,'r') as f:
+            lines = f.readlines()
     matchedlines = []
     for line in lines:
         if tag in line:
@@ -175,9 +180,12 @@ def _chop_all(epsilon, i):
 
 
     
-def fileinDir(searchfile,dir, or_close=False):
+def fileinDir(searchfile,directory, or_close=False,returnFiles = True):
     from os import listdir
     if not or_close:
-        return True in [searchfile == x for x  in listdir(dir)]
+        return True in [searchfile == x for x  in listdir(directory)]
     else:
-        return True in [searchfile in x for x  in listdir(dir)]
+        if returnFiles:
+            return [x for x in listdir(directory) if searchfile in x]
+        else:
+            return True in [searchfile in x for x  in listdir(directory)]

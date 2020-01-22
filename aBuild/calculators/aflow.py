@@ -31,6 +31,8 @@ class AFLOW:
     # with the crystal and the species information.
             
     def _init_dict(self,specs):
+        print(specs)
+        self.aflowin = specs['aflowin']
         if specs['incar']['build'] != 'auto':
             self.INCAR = INCAR(specs["incar"])
             self.incar_auto_build = False
@@ -66,9 +68,9 @@ class AFLOW:
         # In this case, we want to read all the relevant information from the aflow.in file.
         from os import path
 
-        self.POTCAR = POTCAR(path.join(self.directory,'POTCAR.static.xz'))
-        self.KPOINTS = KPOINTS(path.join(self.directory,'KPOINTS.static.xz'))
-        self.crystal = Crystal(path.join(self.directory,'POSCAR.static.xz'),self.species,crystalSpecies = self.POTCAR.species)
+        self.POTCAR = POTCAR(self.directory)
+        self.KPOINTS = KPOINTS(self.directory)
+        self.crystal = Crystal(self.directory,self.species,crystalSpecies = self.POTCAR.species)
         
         
 
@@ -88,24 +90,46 @@ class AFLOW:
         with open('aflow.in','r') as f:
             currentlines = f.readlines()
         for line in currentlines:
-            found = False
-            for tag in self.INCAR:
-                if isinstance(self.INCAR[tag],list) or isinstance(self.INCAR[tag],dict):
-                    for subtag in self.INCAR[tag]:
-                        if "[" + tag + "]" + subtag in line:
-                            lines.append("[" + tag + "]" + subtag + "=" + self.INCAR[tag][subtag] + '\n')
-                            found = True
-                elif tag in line:
-                    lines.append("[" + tag + "]" + self.INCAR[tag] + '\n')
-                    found = True
-            if not self.kpoints_auto_build:
-                if '[VASP_KPOINTS_FILE]' in line:
-                    found = True
-                if '[VASP_KPOINTS_MODE_IMPLICIT]' in line:
-                    lines.append('[VASP_KPOINTS_MODE_EXTERNAL]\n')
-                    found = True
-            if not found:
+#            found = False
+            
+            needsRemoved = (True in [x in line for x in self.aflowin['remove']]) or (not self.kpoints_auto_build and '[VASP_KPOINTS_FILE]' in line)
+            if 'add' in self.aflowin:
+                needsAdded = True in [x in line for x in self.aflowin['add']]
+            else:
+                needsAdded = False
+
+            if True in [x in line for x in self.aflowin['replace']]:
+                needsReplaced  = True
+                replaceTag = line.split()[0]
+                replacement = self.aflowin['replace'][replaceTag] + '\n'
+            elif not self.kpoints_auto_build and '[VASP_KPOINTS_MODE_IMPLICIT]' in line:
+                needsReplaced = True
+                replacement = '[VASP_KPOINTS_MODE_EXTERNAL]\n'
+            else:
+                needsReplaced = False
+
+
+            if needsRemoved:
+                lines.append('#aBuild' + line)
+#                continue
+            elif needsReplaced:
+                lines.append(replacement)
+            elif needsAdded:
+                print('Added branch triggered')
+            else:
                 lines.append(line)
+#            elif not self.kpoints_auto_build:
+#                if '[VASP_KPOINTS_FILE]' in line:
+#                    continue
+  #                  found = True
+#                if '[VASP_KPOINTS_MODE_IMPLICIT]' in line:
+#                    lines.append('[VASP_KPOINTS_MODE_EXTERNAL]\n')
+  #                  found = True
+ #           else:
+ #               lines.append(line)
+
+ #           if not found:
+ #               lines.append(line)
 
         with open('aflow.in','w') as f:
             f.writelines(lines)
@@ -128,8 +152,6 @@ class AFLOW:
         if any(self.crystal.atom_counts == 0):
             from numpy import  where
             idxKeep = list(where( self.crystal.atom_counts > 0)[0])
-            print(idxKeep, 'idx keep')
-            print(self.species, 'species')
 #            self.POTCAR.species = list(array(self.POTCAR.species)[idxKeep])
             self.crystal.atom_counts = self.crystal.atom_counts[idxKeep]
             self.crystal.species = list(array(self.species)[idxKeep])

@@ -1,11 +1,12 @@
 from os import path
 from aBuild import msg # messaging module
-from aBuild.utility import chdir
+from aBuild.utility import chdir,fileinDir
+
 #from aBuild.calculators import aflow
 import os
 import sys
 import numpy as np
-
+import lzma
 config = sys.modules["config"]  
 
 class VASP:
@@ -47,10 +48,14 @@ class VASP:
                 msg.fatal("I don't have all the necessary information to initialize: {}".format(specs.keys()))
         #Initialize from a path
         elif isinstance(specs, str):
-            self.POTCAR = POTCAR(path.join(specs,'POTCAR'))
-            self.KPOINTS = KPOINTS(path.join(specs,'KPOINTS'))
-            self.crystal = Crystal(path.join(specs,'POSCAR'),systemSpecies,crystalSpecies = self.POTCAR.species)
             self.directory = specs
+            self.getFileNames()
+            if any([x == None for x in [self.potcarName, self.incarName,self.kpointsName,self.poscarName]]):
+                msg.fatal("You're trying to initialize a VASP folder that doesn't appear to have all of the necessary files")
+            self.POTCAR = POTCAR(path.join(self.directory,self.potcarName))
+            self.KPOINTS = KPOINTS(path.join(self.directory,self.kpointsName))
+            self.INCAR = INCAR(path.join(self.directory,self.incarName))
+            self.crystal = Crystal(path.join(self.directory,self.poscarName),systemSpecies,crystalSpecies = self.POTCAR.species)
         else:
             msg.fatal("Unable to initialize a VASP object from the data that you passed in:", specs)
         if directory is not None:
@@ -91,18 +96,16 @@ class VASP:
     # the POSCAR file.
     def check_atom_counts_zero(self):
         from numpy import array,any
-        print(self.crystal.atom_counts, 'atom counts')
-        print(any(self.crystal.atom_counts == 0))
         if any(self.crystal.atom_counts == 0):
             from numpy import  where
             idxKeep = list(where( self.crystal.atom_counts > 0)[0])
             self.POTCAR.species = list(array(self.POTCAR.species)[idxKeep])
             self.crystal.atom_counts = self.crystal.atom_counts[idxKeep]
             self.crystal.species = self.POTCAR.species
-    def _check_tag_exists(self,file,tag):
+    def _check_tag_exists(self,filename,tag):
         from aBuild.utility import grep
 
-        lines = grep(file,tag)
+        lines = grep(filename,tag)
         if lines == []:
             return False
         else:
@@ -117,23 +120,81 @@ class VASP:
         else:
             return False
 
+
+    def getFileNames(self):
+
+        self.incarName = self.fileName('INCAR')
+        self.poscarName = self.fileName('POSCAR')
+        self.potcarName = self.fileName('POTCAR')
+        self.kpointsName = self.fileName('KPOINTS')
+        self.vaspOutName = self.fileName('vasp.out')
+        self.oszicarName = self.fileName('OSZICAR')
+        self.outcarName = self.fileName('OUTCAR')
+        self.aflowinName = self.fileName('aflow.in')
+        self.aflowendName = self.fileName('aflow.end.out')
+
+
+    def fileName(self,partName):
+        files = fileinDir(partName,self.directory,or_close = True)
+
+        # Let's find the filename of the INCAR we want to initialize
+        if True in ['static' in x for x in files]:
+            # Must be a static run via AFLOW.  File is INCAR.static.xz probably.
+            index = ['static' in x for x in files].index(True)
+            if 'xz' in files[index]:
+                fileName = partName + '.static.xz'
+                filepath = path.join(self.directory,partName + '.static.xz')
+            else:
+                fileName = partName + '.static'
+                filepath = path.join(self.directory,partName+'.static')
+        elif True in ['relax' in x for x in files]:
+            # Must be a relaxation run via AFLOW
+            index = ['relax' in x for x in files].index(True)
+            if 'xz' in files[index]:
+                fileName = partName + '.relax2.xz'
+                filepath = path.join(self.directory,partName+'.relax2.xz')
+            else:
+                fileName = partName + '.relax2'
+                filepath = path.join(self.directory,partName+'.relax2')
+        elif files != []:
+            fileName = partName
+            filepath = path.join(self.directory,partName)
+        else:
+            fileName = None
+            filepath = None
+        return fileName
+        
+
+
     def status(self):
         from os import path
         from time import time
-        from aBuild.utility import grep
+        from aBuild.utility import grep,fileinDir
         import os
         fTagStatic = '------------------------ aborting loop because EDIFF is reached ----------------------------------------\n'
         fTagRelax = ' writing wavefunctions'
         ctime = time()
         print('checking directory {}'.format(self.directory))
+
+        calcType = 'aflow' if True in ['aflow' in x for x in os.listdir(self.directory)] else 'vasp'
         with chdir(self.directory):
-            outcar = self._check_file_exists('OUTCAR')
-            incar = self._check_file_exists('INCAR')
-            kpoints = self._check_file_exists('KPOINTS')
-            potcar = self._check_file_exists('POTCAR')
-            poscar = self._check_file_exists('POSCAR')
-            output = self._check_file_exists('vasp_output')
-            oszicar = self._check_file_exists('OSZICAR')
+#            if calcType == 'aflow':
+#                print("Looks like it's and aflow calc")
+#                if fileinDir('aflow.end.out','.'):
+#                    print("Looks like it's done")
+#                    return 'done'
+#            outcar = fileinDir('OUTCAR','.', or_close = True)
+            outcar = self.outcarName is not None
+            incar = self.incarName is not None
+            kpoints = self.kpointsName is not None
+            potcar = self.potcarName is not None
+            poscar = self.poscarName is not None
+            output = self.vaspOutName is not None
+            oszicar = self.oszicarName is not None
+            aflow = self.aflowinName is not None
+            aflowend = self.aflowendName is not None
+            if aflowend:
+                return 'done'
             
 
             inputs = incar and kpoints and potcar and poscar
@@ -152,27 +213,27 @@ class VASP:
                 '''
             elif outcar: # OUTCAR present
 
-                sgrcon = grep('vasp_output','SGRCON')
-                tooclose = grep('vasp_output','HOPE')
-                finalenergyline = grep('OUTCAR','free  energy')
-                generalerror = grep('vasp_output','ERROR')
+                sgrcon = grep(self.vaspOutName,'SGRCON')
+                tooclose = grep(self.vaspOutName,'HOPE')
+                finalenergyline = grep(self.outcarName,'free  energy')
+                generalerror = grep(self.vaspOutName,'ERROR')
                 # Check to make sure I've converged electonically.
-                if grep('OSZICAR','DAV:') != []:
-                    electronicIteration = int(grep('OSZICAR','DAV:')[-1].split()[1])
+                if grep(self.oszicarName,'DAV:') != []:
+                    electronicIteration = int(grep(self.oszicarName,'DAV:')[-1].split()[1])
                 else:
                     electronicIteration = 0
-                if grep('INCAR','nsw') != []:
-                    nsw = int(grep('INCAR','nsw')[0].split('=')[1])
+                if grep(self.incarName,'nsw') != []:
+                    nsw = int(grep(self.incarName,'nsw')[0].split('=')[1])
                     if nsw == 0:
                         nsw = 1
                 else:
                     nsw = 1
-                if grep('OSZICAR','F=') != []:
-                    ionicIteration = int(grep('OSZICAR','F=')[-1].split()[0])
+                if grep(self.oszicarName,'F=') != []:
+                    ionicIteration = int(grep(self.oszicarName,'F=')[-1].split()[0])
                 else:
                     ionicIteration = 1
-                if grep('INCAR','nelm') != []:
-                    maxelectronic = grep('INCAR','nelm')[0].split('=')[1]
+                if grep(self.incarName,'nelm') != []:
+                    maxelectronic = grep(self.incarName,'nelm')[0].split('=')[1]
                 else:
                     maxelectronic = 60
                 if ionicIteration == nsw and int(electronicIteration) == int(maxelectronic):
@@ -182,7 +243,7 @@ class VASP:
                 calculation or a relaxation because the tag 
                 to check for is different.'''
                 if incar:
-                    relax = grep('INCAR','IBRION')
+                    relax = grep(self.incarName,'IBRION')
                     if '-1' not in relax or relax is []:
                             static = True
                     else:
@@ -191,14 +252,14 @@ class VASP:
                     return 'not setup'
                     
                 ''' Check finish tag for static calc'''
-                if static and self._check_tag_exists('OUTCAR', fTagStatic):  #finish tag found
+                if static and self._check_tag_exists(self.outcarName, fTagStatic):  #finish tag found
                     if finalenergyline != []:  #Let's double check
                         return 'done'
                     else:  # Apparently not,  why?
                         return 'idk'
                     
                     ''' Check finish tag for relax calc'''
-                elif self._check_tag_exists('OUTCAR',fTagRelax): #Looks like it's done
+                elif self._check_tag_exists(self.outcarName,fTagRelax): #Looks like it's done
                     if finalenergyline != []:  # Let's double check
                         return 'done'
                     else:  # Apparently not, why?
@@ -207,7 +268,7 @@ class VASP:
                         
                     ''' Check how long since the last file write.  If it was recent
                      then we're probably running.'''
-                    time = path.getmtime('OUTCAR')
+                    time = path.getmtime(self.outcarName)
                     if (ctime - time) < 3600:  # If the OUTCAR was modified in the last hour
                                               # the calculation is probably still running.
                         return 'running'
@@ -225,7 +286,7 @@ class VASP:
                     
                         
             if output:
-                    warning = grep('output','RRRRR') != [] or grep('output','AAAAAA') != []
+                    warning = grep(self.vaspOutName,'RRRRR') != [] or grep(self.vaspOutName,'AAAAAA') != []
                     if warning:
                         return 'warning'
 
@@ -261,17 +322,25 @@ class VASP:
         
 
     def read_forces(self,allIonic = True):
+        
+        openDict = {True: lzma.open(self.poscarName,'rt'), False: open(self.poscarName,'r')}
 
-        with open('POSCAR','r') as file:
-            poslines = file.readlines()
+        with openDict['xz' in self.poscarName] as f:
+            poslines = f.readlines()
+                
         if any(c.isalpha() for c in poslines[5].strip()):  #It's a CONTCAR
             nAtoms = sum([int(i) for i in poslines[6].split()])
         else:
 
             nAtoms = sum([int(i) for i in poslines[5].split()])
-        
-        with open('OUTCAR', 'r') as file:
-            lines = file.readlines()
+
+        if 'xz' in self.outcarName:
+            import lzma
+            with lzma.open(self.outcarName,'rt') as f:
+                lines = f.readlines()
+        else:
+            with open(self.outcarName, 'r') as f:
+                lines = f.readlines()
 
         n = 0
 
@@ -305,27 +374,34 @@ class VASP:
         return forces
 
     def read_fermi(self):
+        
         """Method that reads Fermi energy from OUTCAR file"""
         E_f = None
-        for line in open('OUTCAR', 'r'):
+
+        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
+        for line in openDict['xz' in self.outcarName]:
             if line.rfind('E-fermi') > -1:
                 E_f = float(line.split()[2])
         return E_f
                 
     def read_nbands(self):
-        for line in open('OUTCAR', 'r'):
+        
+        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
+        for line in openDict['xz' in self.outcarName]:
             line = self.strip_warnings(line)
             if line.rfind('NBANDS') > -1:
                 nBands  = int(line.split()[-1])
         return nBands
 
     def read_energy(self, allElectronic=False):
+        
         energyZ = None
         energyF = None
         if allElectronic:
             energyF = []
             energyZ = []
-        for line in open('OUTCAR', 'r'):
+        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
+        for line in openDict['xz' in self.outcarName]:
             # Free energy
             if line.lower().startswith('  free  energy   toten') or line.lower().startswith('  free energy    toten'):
                 if allElectronic:
@@ -342,11 +418,17 @@ class VASP:
         return energyF,energyZ
 
     def read_stress(self):
+        
         stress = None
-        for line in open('OUTCAR'):
-            if line.find(' in kB  ') != -1:
-                stress = -np.array([float(a) for a in line.split()[2:]])
-                stress = stress[[0, 1, 2, 4, 5, 3]] * 1e-1 #* .00624151# * ase.units.GPa.. Gets me to Giga Pascals
+        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
+        for line in openDict['xz' in self.outcarName]:
+            if line.find(' Total    ') != -1:
+                try:
+                    stress = -np.array([float(a) for a in line.split()[1:]])
+                    stress = stress[[0, 1, 2, 4, 5, 3]] #* 1e-1 #* .00624151# * ase.units.GPa.. Gets me to Giga Pascals
+                except: 
+                    msg.error("Unable to read stress from OUTCAR file")
+                    stress = None
         return stress
 
     def read_results(self, allElectronic = False, allIonic=False):
@@ -416,7 +498,7 @@ class POTCAR:
     def _init_path(self,filepath,fileformat = 'POTCAR'):
         import os
         from os import path
-
+        from aBuild.utility import fileinDir
               
         if not path.isfile(filepath):
             self.species = None
@@ -453,6 +535,9 @@ class POTCAR:
         self.xc = xc
         self.directory = None
         
+
+
+    
     # Checks to see that the requested POTCARS are found.  If they are not found, stop and warn the user.
     def _potcarsOK(self):
         from os.path import isfile
@@ -497,16 +582,23 @@ class INCAR:
         if isinstance(specs,dict):
             self.tags = specs
         elif isinstance(specs,str):
-            self._init_file(specs)
+            self._init_path(specs)
         else:
             self.setDefaultTags()
 
-                
-        
-    def _init_file(path,filename = 'INCAR'):
-        with open(path,'r') as f:
-            lines = f.readlines()
 
+
+
+        
+    def _init_path(self,filepath,filename = 'INCAR'):
+        
+        if 'xz' in filepath:
+            import lzma
+            with lzma.open(filepath,'rt') as f:
+                lines = f.readlines()
+        else:
+            with open(filepath,'r') as f:
+                lines = f.readlines()
         self.tags = {}
 
         for line in lines:
@@ -741,7 +833,6 @@ class POSCAR(object):
             with open(os.path.abspath(filename),'r') as f:
                 poscarlines = f.readlines()
 
-        print(poscarlines, 'pclines')
         self.from_string(poscarlines)
 
     def from_string(self, poscarlines):
@@ -778,7 +869,6 @@ class POSCAR(object):
             self.concentrations = poscarlines[basisStartLine+nBas:basisStartLine+2*nBas]
         else:
             self.concentrations = ""
-        print('here')
     def _init_lattice(self, lattice):
         """Initializes the POSCAR lines from a Lattice instance."""
         self.label = "Lattice PosCar"

@@ -118,6 +118,8 @@ class dataset:
         self.formationenergies = [ float(x.split()[-5]) for x in lines]
         self.concs = [ float(x.split()[-4]) for x in lines]
         self.titles = [' '.join(x.split()[:-7]) for x in lines]
+
+
     def _init_mlp(self,datafile):
         from aBuild.database.crystal import Crystal
         import os
@@ -131,17 +133,12 @@ class dataset:
         nCrystals = 0
         # Get information for pures so I can calculate formation energies 
         root = os.getcwd()
-        if fileinDir('aflow',path.join(root,'training_set','pure'+self.species[0]), or_close = True):
-            pures = [AFLOW(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
-        else:
-            pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
 
+
+        pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
         puresDict = {}
         for ispec,spec in enumerate(self.species):
             pures[ispec].read_results()
-#            puresDict[spec] = pures[ispec].crystal.results["energypatom"]
-        print(pures, 'pures')
-        print(pures[0].crystal.results, pures[1].crystal.results)
         for index,line in enumerate(lines):
             if 'BEGIN' in line:
                 indexStart = index
@@ -156,7 +153,6 @@ class dataset:
                     if thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
                 else:
-                    print(thisCrystal.results, pures[0].crystal.results, pures[1].crystal.results)
                     thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
                     if thisCrystal.results["energyF"] < 100 and thisCrystal.minDist > 1.5:
                         self.crystals.append(thisCrystal)
@@ -246,13 +242,11 @@ class dataset:
             calculator[calculator["active"]]["species"] = self.species
             
             # Initialize the calculation object
-            print(calculator[calculator["active"]], 'check here')
             thisCalc = lookupCalc[calculator["active"]](calculator[calculator["active"]])
-#            thisCalc = lookupCalc[calculator["active"]](lookupSpecs[calculator["active"]](crystal))
 
-            if 'AFM' in calculator[calculator["active"]] and thisCalc.crystal.AFMPlanes == None:
-                msg.info("Skipping this structure because I can't find the AFM planes")
-                continue
+#            if 'AFM' in calculator[calculator["active"]] and thisCalc.crystal.AFMPlanes == None:
+#                msg.info("Skipping this structure because I can't find the AFM planes")
+#                continue
             
             # Build the path
             runpath = path.join(buildpath,foldername + ".{}".format(configIndex) )

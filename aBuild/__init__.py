@@ -161,6 +161,9 @@ class Controller(object):
         
 
     # BUild VASP folders so I can generate training data
+    # This mode is no longer used because with MTP we can
+    # start with an empty training set and have MPT pick the
+    # first set of training structures
     def setup_training_set(self,runGetKpoints = True):
         from os import path
         
@@ -211,9 +214,10 @@ class Controller(object):
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
         stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[],'sgrcon':[],'error':[]}
         for dir in dirs:
+            print('Checking dir:', dir)
             thisVASP = VASP(dir,systemSpecies = self.species)
             stat[thisVASP.status()].append(dir.split('/')[-1])
-            #            msg.info("Status of directory {} is {} ".format(dir,thisVASP.status()))
+            msg.info("Status of directory {} is {} ".format(dir,thisVASP.status()))
         msg.info('Done (' + str(len(stat['done'])) + ')')
         msg.info(' '.join(stat['done']))
         msg.info('Running (' + str(len(stat['running'])) + ')')
