@@ -27,7 +27,7 @@ def grep(filename,tag):
     if 'xz' in filename:
         import lzma
         with lzma.open(filename,'rt') as f:
-            lines = readlines()
+            lines = f.readlines()
     else:
         with open(filename,'r') as f:
             lines = f.readlines()

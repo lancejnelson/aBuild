@@ -212,7 +212,7 @@ class Controller(object):
             activedirs = glob("A.*")
 
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-        stat = {'done':[],'running':[], 'not started': [], 'too long':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[],'sgrcon':[],'error':[]}
+        stat = {'done':[],'running':[], 'not started': [], 'killed before done':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[],'sgrcon':[],'error':[]}
         for dir in dirs:
             print('Checking dir:', dir)
             thisVASP = VASP(dir,systemSpecies = self.species)
@@ -226,8 +226,8 @@ class Controller(object):
         msg.info(' '.join(stat['not started']))
         msg.info('Not Setup (' + str(len(stat['not setup'])) + ')')
         msg.info(' '.join(stat['not setup']))
-        msg.info('Too Long (' + str(len(stat['too long'])) + ')    (last write was > 1 hr ago) ')
-        msg.info(' '.join(stat['too long']))
+        msg.info('Killed before done (' + str(len(stat['killed before done'])) + ')    (last write was > 1 hr ago) ')
+        msg.info(' '.join(stat['killed before done']))
         msg.info('Warnings (' + str(len(stat['warning'])) + ')')
         msg.info(' '.join(stat['warning']))
         msg.info('Not sure (' + str(len(stat['idk'])) + ')  (Found finish tags but couldn''t find final energy.  It''s probably in the process of finishing.)')

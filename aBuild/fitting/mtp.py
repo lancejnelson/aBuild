@@ -117,7 +117,7 @@ class MTP(object):
         from os import path
         if buildJob:
             if executeParams["ntasks"] > 1:
-                mlpCommand = 'mpirun -n ' + str(executeParams["ntasks"]) + ' mlp train {} {}'.format(potential,tSet)
+                mlpCommand = 'srun -n ' + str(executeParams["ntasks"]) + ' mlp train {} {}'.format(potential,tSet)
             else:
                 mlpCommand = 'mlp train {} {}'.format(potential,tSet)
             mljob = Job(executeParams,self.root,mlpCommand)
@@ -152,9 +152,11 @@ class MTP(object):
 
         if buildJob:
             if executeParams["ntasks"] > 1:
-                mlpCommand = 'mpirun -n ' + str(executeParams["ntasks"]) + ' ' + baseCommand
+                mlpCommand = 'srun -n ' + str(executeParams["ntasks"]) + ' ' + baseCommand
             else:
                 mlpCommand = baseCommand
+            executeParams["ntasks"] = 12
+            executeParams["time"] = 12
             mljob = Job(executeParams,self.root,mlpCommand)
             with chdir(self.root):
                 print('Building job file')
@@ -171,10 +173,11 @@ class MTP(object):
         baseCommand = 'mlp select-add pot.mtp train.cfg candidate.cfg new_training.cfg'
 
         if buildJob:
-            if executeParams["ntasks"] > 1:
-                mlpCommand = 'mpirun -n ' + str(executeParams["ntasks"]) + ' ' + baseCommand
-            else:
-                mlpCommand = baseCommand
+            # Select does not yet run in parallel.
+            mlpCommand = baseCommand
+            executeParams["ntasks"] = 1
+            executeParams["time"] = 12
+            executeParams["job_name"]
             mljob = Job(executeParams,self.root,mlpCommand)
             with chdir(self.root):
                 print('Building job file')
@@ -264,7 +267,7 @@ class MTP(object):
         # 1.  If to-relax.cfg does not exist, build it.  This
         #     takes a while because we are putting a bunch of
         #     structures in there.
-        # 2.  If to-relax.cfg does exist (iteration > 1), then
+        # 2.  If to_relax.cfg does exist (iteration > 1), then
         #     copy unrelaxed.cfg from previous iteration to to-relax.cfg
         #     Note that there may be many unrelaxed.cfg_# from the parallel run
         # 3.  Copy Trained.mtp to pot.mtp in preparation for the relaxation
@@ -272,16 +275,14 @@ class MTP(object):
         # 5.  Run calc-grade
         # 6.  Build a submission script.
         filePath = path.join(self.root,'to_relax.cfg')
-        #unrelaxedfilePath = path.join(fittingRoot,'unrelaxed.cfg')
-
+        
         torelax = path.isfile(filePath)
-        #unrelaxed = path.isfile(unrelaxedfilePath)
-
+        
         # 1.
         if not torelax:  #This must be the first iteration
             print('Building a new to-relax.cfg file')
             self.build_ToRelax(enumDicts,species,AFM = AFM,start = start,end = end)
-            # Write a bland potential file if this is the firt iteration
+            # Write a bland potential file if this is the first iteration
             self.write_blank_pot(len(species))
             # Create an empty training set if this is the first iteration
             train = path.join(self.root,'train.cfg')
@@ -291,31 +292,24 @@ class MTP(object):
             if freshStart:
                 remove(filePath)
                 self.build_ToRelax(enumDicts,species,AFM = AFM,start = start,end = end)
-         #   elif unrelaxed:  #Iteration must be > 1
-         ##       unrelaxedFiles = glob(path.join(fittingRoot,"unrelaxed.cfg_*"))
-          ##      cat(unrelaxedFiles,path.join(fittingRoot,"to-relax.cfg"))
-           #     remove(unrelaxedFiles)
             else: #"to-relax.cfg is present and I don't wanta  fresh start.  Don't do anything."
-            #    self.build_ToRelax(enumDicts,species)
-                msg.info("to-relax.cfg found and you told me to not start fresh.  Proceeding with the to-relax.cfg that's there.")
-        #elif path.isfile(filePath):  # Iteration # must be > 1
-        #        rename(path.join(self.root,'fitting/mtp')
+                msg.info("to_relax.cfg found and you told me to not start fresh.  Proceeding with the to-relax.cfg that's there.")
         
 
         # 3.
-        try:
-            print('copying Trained.mtp to pot.mtp')
+        if path.isfile(path.join(self.root,'Trained.mtp_')):
             copy(path.join(self.root,'Trained.mtp_'),path.join(self.root,'pot.mtp'))
-        except:
-            if not path.isfile(path.join(self.root,'Trained.mtp_')):
-                msg.info("Can't find Trained.mtp_ .You don't appear to have a trained potential ready" )
-            else:
-                msg.info("Not sure why the copy of Trained.mtp_ -> pot.mtp failed.  You should investigate")
-                # if path.isfile(path.join(self.root,'pot.mtp')):
-           #     msg.info('It looks like you have already copied Trained.mtp -> pot.mtp previously')
-       #     else:
-       #         msg.fatal("Can't find a pot.mtp or a Trained.mtp.  Problems")
-                          
+        elif not path.isfile(path.join(self.root,'pot.mtp')):
+            self.write_blank_pot(len(species))
+        else:
+            msg.info('Trained.mtp_ not found, but pot.mtp was found.  Must have setup a first iteration previously!  ')
+
+        if not path.isfile(path.join(self.root,'train.cfg')):
+            train = path.join(self.root,'train.cfg')
+            open(train, 'a').close()
+        else:
+            msg.info("Found train.cfg.  Iteration > 1?")
+
         # 4.
         self.write_relaxin()
         # 5.
@@ -335,7 +329,7 @@ class MTP(object):
         from aBuild.utility import unpackProtos,getAllPerms,getProtoPaths
         from aBuild.database.crystal import Crystal
         from os import remove,path
-        print('Building to-relax.cfg')
+        print('Building to_relax.cfg')
         print(enumDicts)
         nEnums = len(enumDicts)
         knary = len(species)
@@ -363,11 +357,11 @@ class MTP(object):
                             if not AFM:
                                 print('Adding to file')
                                 #print("Atom counts after scramble {}".format(thisCrystal.atom_counts))
-                                with open(path.join(self.root,'to-relax.cfg'),'a+') as f:
+                                with open(path.join(self.root,'to_relax.cfg'),'a+') as f:
                                     f.writelines('\n'.join(thisCrystal.lines('mtprelax') ) )
                             elif thisCrystal.getAFMPlanes([1,0,0]):
                                 print("Original Crystal is AFM compatible")
-                                with open(path.join(self.root,'to-relax.cfg_' + str(start)),'a+') as f:
+                                with open(path.join(self.root,'to_relax.cfg_' + str(start)),'a+') as f:
                                     f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
                               #  break
                             else:
@@ -378,7 +372,7 @@ class MTP(object):
                                     print('Found a super-Periodic that works')
                                     print(superCrystal.basis,'basis')
                                     print(superCrystal.atom_counts, 'atom counts')
-                                    with open(path.join(self.root,'to-relax.cfg_' + str(start)),'a+') as f:
+                                    with open(path.join(self.root,'to_relax.cfg_' + str(start)),'a+') as f:
                                         f.writelines('\n'.join(superCrystal.lines('mtprelax') ))
                                # break
             else:
@@ -394,7 +388,7 @@ class MTP(object):
                     print("Lattice",lat, "structure:",struct)
                     enumLattice.generatePOSCAR(struct) 
                     thisCrystal = Crystal(path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct)),species)
-
+                    thisCrystal.set_latpar()
 
                     # The code below was developed during time at INL.  It was used to find AFM compatible structures
 #                    if not AFM:
@@ -418,7 +412,7 @@ class MTP(object):
 #                        
 #                    #                    print(thisCrystal.appMinDist,' approp Min Dist')
                     #print(thisCrystal.minDist, 'actual min dist')
-                    with open(path.join(self.root,'to-relax.cfg' + filetag),'a+') as f:
+                    with open(path.join(self.root,'to_relax.cfg' + filetag),'a+') as f:
                         f.writelines('\n'.join(thisCrystal.lines('mtprelax') ))
 
                     delpath = path.join(enumLattice.root,"poscar.{}.{}".format(lat,struct))

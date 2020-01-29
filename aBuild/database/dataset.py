@@ -174,6 +174,7 @@ class dataset:
         for dirpath in paths:
             print("Initializing from path: {}".format(dirpath))
             if self.calculator == 'VASP':
+                print(systemSpecies, 'Checking system species')
                 calc = VASP(dirpath,systemSpecies = systemSpecies)
                 calc.read_results()
 
@@ -184,6 +185,7 @@ class dataset:
 
                 
             if calc.crystal.results is not None:
+                print("not adding this one, it's not ready")
                 self.crystals.append(calc.crystal)
 
             

@@ -15,14 +15,11 @@ class VASP:
         specs (dict or str):  Either a dictionary containing all of the 
                               necessary settings or a path to a folder that
                               contains all of the files needed.
-        root (str): Path to the calculation folder
-        incar (dict): Dictionary containing the INCAR tags to be used
-        potcars (dict): Dictionary containing the necessary settings to 
-                        find the correct POTCARS.
-                        <directory> : where the potcars are located
-                        <>
-        kpoints (dict): KPOINTS settings
-        crystal (CRYSTAL OBJ): Crystal description
+        systemSpecies (list): List of the species for this system.  Note that this list may not
+                              be identical to the species found in the POSCAR or POTCAR.  For example,
+                              you may be studying a ternary system, but this particular calculation
+                              has 0 of one atom type.  (Optional because if you initialize with a dictionary
+                                                        the species list comes in with it)
     """
 
 
@@ -48,14 +45,22 @@ class VASP:
                 msg.fatal("I don't have all the necessary information to initialize: {}".format(specs.keys()))
         #Initialize from a path
         elif isinstance(specs, str):
+            if systemSpecies == None:
+                msg.fatal("When initializing a VASP object with a path, you need to supply the system's species list")
             self.directory = specs
             self.getFileNames()
-            if any([x == None for x in [self.potcarName, self.incarName,self.kpointsName,self.poscarName]]):
-                msg.fatal("You're trying to initialize a VASP folder that doesn't appear to have all of the necessary files")
-            self.POTCAR = POTCAR(path.join(self.directory,self.potcarName))
-            self.KPOINTS = KPOINTS(path.join(self.directory,self.kpointsName))
-            self.INCAR = INCAR(path.join(self.directory,self.incarName))
-            self.crystal = Crystal(path.join(self.directory,self.poscarName),systemSpecies,crystalSpecies = self.POTCAR.species)
+            self.POTCAR = POTCAR(path.join(self.directory,self.potcarName)) if self.potcarName is not None else None
+            self.KPOINTS = KPOINTS(path.join(self.directory,self.kpointsName)) if self.kpointsName is not None else None
+            self.INCAR = INCAR(path.join(self.directory,self.incarName)) if self.incarName is not None else None
+            if self.poscarName is not None:
+                if self.potcarName is not None:
+                    # Best case scenario: POTCAR is found, systemSpecies has been passed in and there appears to be a POSCAR file
+                    self.crystal = Crystal(path.join(self.directory,self.poscarName),systemSpecies,crystalSpecies = self.POTCAR.species)
+                else:
+                    # If I can't find a POTCAR, I'll let the Crystal object try and determine the species from the POSCAR file
+                    self.crystal = Crystal(path.join(self.directory,self.poscarName),systemSpecies)
+            else:
+                self.crystal = None
         else:
             msg.fatal("Unable to initialize a VASP object from the data that you passed in:", specs)
         if directory is not None:
@@ -104,11 +109,13 @@ class VASP:
             self.crystal.species = self.POTCAR.species
     def _check_tag_exists(self,filename,tag):
         from aBuild.utility import grep
-
+        print('checking that {} tag exists in file {}'.format(tag,filename))
         lines = grep(filename,tag)
         if lines == []:
+            print('Not found')
             return False
         else:
+            print("Found!")
             return True
 
 
@@ -176,6 +183,8 @@ class VASP:
         ctime = time()
         print('checking directory {}'.format(self.directory))
 
+        if any([x is None for x in [self.potcarName, self.incarName,self.kpointsName,self.poscarName]]):
+            return 'not setup'
         calcType = 'aflow' if True in ['aflow' in x for x in os.listdir(self.directory)] else 'vasp'
         with chdir(self.directory):
 #            if calcType == 'aflow':
@@ -193,18 +202,19 @@ class VASP:
             oszicar = self.oszicarName is not None
             aflow = self.aflowinName is not None
             aflowend = self.aflowendName is not None
-            if aflowend:
-                return 'done'
+            #if aflowend:
+            #    return 'done'
             
 
             inputs = incar and kpoints and potcar and poscar
-
+            print(inputs,' inputs Found?')
             ''' Check to see if the input files are present
                 if they aren't, no need to proceed, just return
                 'not setup'
             '''
             
             if not inputs:
+                print('inputs not found')
                 return 'not setup'
 
                 ''' If the OUTCAR file is present, we know that we're
@@ -279,7 +289,7 @@ class VASP:
                     elif tooclose:
                         return 'warning'
                     else:
-                        return 'too long'
+                        return 'killed before done'
                     
             else:
                     return 'not started'
@@ -322,7 +332,7 @@ class VASP:
         
 
     def read_forces(self,allIonic = True):
-        
+        import lzma
         openDict = {True: lzma.open(self.poscarName,'rt'), False: open(self.poscarName,'r')}
 
         with openDict['xz' in self.poscarName] as f:
@@ -432,7 +442,7 @@ class VASP:
         return stress
 
     def read_results(self, allElectronic = False, allIonic=False):
-        if self.directory is not None and self.status() in ['done','unconverged']:
+        if self.directory is not None and self.status() == 'done':
             with chdir(self.directory):
                 self.crystal.results = {}
                 self.crystal.results["warning"] = False
@@ -460,12 +470,19 @@ class VASP:
 
     @property
     def formationEnergy(self):
+        from os import path
         pures = []
         for i in range(self.crystal.nTypes):
-            pureDir = path.join(path.split(self.directory)[0], 'pure' + self.crystal.species[i])
-            pureVASP = VASP(pureDir,systemSpecies = self.crystal.species)
-            pureVASP.read_results()
-            pures.append(pureVASP)
+            print(self.directory, self.crystal.systemSpecies, "HERE")
+            print(i,' I')
+            pureDir = path.join(path.split(self.directory)[0], 'pure' + self.crystal.systemSpecies[i])
+            if path.isdir(pureDir):
+                pureVASP = VASP(pureDir,systemSpecies = self.crystal.systemSpecies)
+                pureVASP.read_results()
+                pures.append(pureVASP)
+            else:
+                msg.warn("Unable to read pures information, not calculating formation energy")
+                return None
 
         try:
             formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
@@ -591,7 +608,10 @@ class INCAR:
 
         
     def _init_path(self,filepath,filename = 'INCAR'):
-        
+        if not path.isfile(filepath):
+            self.tags = None
+            return
+
         if 'xz' in filepath:
             import lzma
             with lzma.open(filepath,'rt') as f:
@@ -847,22 +867,34 @@ class POSCAR(object):
         #CONTCARs have species names in the next line, but typical POSCARs dont.  Let's
         # Figure out which one we have
 
-        if any(c.isalpha() for c in poscarlines[5].strip()):  #It's a CONTCAR
+        if any(c.isalpha() for c in poscarlines[5].strip()):  #Updated styling for
             countsLine = 6
             coordSysLine = 7
             basisStartLine = 8
+            self.atom_counts = poscarlines[countsLine].strip()
+            nBas = sum(map(int, self.atom_counts.split()))
+            self.coordsys = poscarlines[coordSysLine].split('\n')[0]
+            self.Bv = [' '.join(x.split()[:3]) for x in poscarlines[basisStartLine:basisStartLine+nBas]]
+            #self.Bv = poscarlines[basisStartLine:basisStartLine+nBas]
+            self.species = poscarlines[5].split()
             
-
-        else: #It's a POSCAR
+        else: #It's the older styling
             countsLine = 5
             coordSysLine = 6
             basisStartLine = 7
-            
-        self.atom_counts = poscarlines[countsLine].strip()
-        self.coordsys = poscarlines[coordSysLine].split('\n')[0]
-
-        nBas = sum(map(int, self.atom_counts.split()))
-        self.Bv = poscarlines[basisStartLine:basisStartLine+nBas]
+            self.atom_counts = poscarlines[countsLine].strip()
+            nBas = sum(map(int, self.atom_counts.split()))
+            self.coordsys = poscarlines[coordSysLine].split('\n')[0]
+            self.Bv = [' '.join(x.split()[:3]) for x in poscarlines[basisStartLine:basisStartLine+nBas]]
+            if any(c.isalpha() for c in poscarlines[basisStartLine].strip()):
+                self.species = []
+                for i in poscarlines[basisStartLine:basisStartLine + nBas]:
+                    if i.split()[-1] not in self.species:
+                        self.species.append(i.split()[-1])
+                print(self.species,' Check Here')
+                
+            else:
+                self.species = None
         
         if basisStartLine + 2*nBas < len(poscarlines):
             #We could still have concentration information in the POSCAR

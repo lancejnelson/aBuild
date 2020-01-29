@@ -165,45 +165,55 @@ class Lattice:
             
         
 class Crystal(object):
+    """A crystal object is a lattice + a basis, including the types of atoms in the unit cell.
+       
+    Args:
+        crystalSpecs (dict or str or list):  Either a dictionary containing all of the 
+                              necessary settings or a path to a folder that
+                              contains all of the files needed.  May also be a list of strings from
+                              a file read.  In this case, we will parse the lines one-by-one and read in the
+                              crystallographic information for each one.  Note:  We must know what the format
+                              of the file is in this case
+        systemSpecies (list): List of the species for this system.  Note that this list may not
+                              be identical to the species found in the POSCAR or POTCAR.  For example,
+                              you may be studying a ternary system, but this particular calculation
+                              has 0 of one atom type.  This argument must always be passed in because without it
+                              we don't whether we have all of the atom types for the system.
+    """
 
-    def __init__(self,crystalSpecs, systemSpecies,crystalSpecies = None,lFormat = 'mtpselect'):
-        self.species = systemSpecies
-        if isinstance(crystalSpecs,dict):  # When the crystal info is given in a dictionary
+    def __init__(self,crystalSpecs, systemSpecies,crystalSpecies = None, lFormat = 'mtpselect'):
+        # The system species needs to always be passed in.  The crystals species is optional because we may be able to extract
+        # it from input files.
+        self.systemSpecies = systemSpecies
+        self.crystalSpecies = crystalSpecies
+        self.speciesMismatch = False  
+        if isinstance(crystalSpecs,dict):
+            # When the crystal info is given in a dictionary
+            # If a dictionary is passed in, the crystal species
+            # species will be inside that dictionary.  No need to pass
+            # it in separately.
             self._init_dict(crystalSpecs)
-        elif isinstance(crystalSpecs,str): # Read a file with (probably poscar)
+        elif isinstance(crystalSpecs,str):
+            # When a file path is passed in, we're probably initializing from
+            # a poscar file.  It's possible that the POSCAR file does not
+            # have species information in which case we need to load it manually.
             print('initializing Crystal object from a file')
             self.directory = crystalSpecs
             self._init_file(crystalSpecs)
         elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
             print('initializing Crystal object from a list')
             self._init_lines(crystalSpecs, lFormat)
-            
-#        self.results = None
-#        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
-#        self.atom_types = []
-#        for i in typesList:
-#            self.atom_types += i
-#        self.nAtoms = sum(self.atom_counts)
-#        self.nTypes = len(self.atom_counts)
+        
         if self.nAtoms != len(self.basis):
             msg.fatal("We have a problem")
 
-        self._add_zeros(systemSpecies,crystalSpecies)
-        
-        #print("After, the atom counts was {}.".format(self.atom_counts)) 
-            #''' Didn't read in a POTCAR that was associated with the crystal '''
-            
-        self.AFMPlanes = None
-        if len(self.species) != self.nTypes:
-            msg.fatal('The number of atom types provided ({})is not consistent with the number of atom types found in the poscar ({})'.format(self.species,self.nTypes))
-        if self.species == None:
-            msg.fatal('I have to know what kind of atoms are in the crystal')
-        if self.latpar is None and self.species is not None:
+        #  Let's check to see if we have a disagreement between the system species and
+        # the crystal species
+        self._add_zeros()
+
+        if self.latpar is None and self.crystalSpecies is not None:
             self.set_latpar()
         #self.validateCrystal()
-        #Just testing this function out.
-#        print(self.atom_counts)
-#        self.superPeriodics(3)
 
     #  Sometimes a crystal object will be instantiated and the number of atom types is not consistent with
     # the order of the system being studied. For example, maybe you are studying a ternary system, but some 
@@ -211,47 +221,40 @@ class Crystal(object):
     #  In these cases, we need to add zeros to the atom_counts variable to clearly indicate which species are 
     # present and which are not.  In other words, our standard for the Crystal object is that the number of species
     # will *always* be equal to the order of the system. No exceptions!
-    def _add_zeros(self,systemSpecies,crystalSpecies):
-        self.species = systemSpecies
-        if crystalSpecies is None:
-            from numpy import array
-            # If you don't tell me what atoms are in
-            # the crystal, then I'll just riffle the system species
-            # in, starting at the front.  For example, when I read in the prototype
-            # files, zeros are not included in the list of 
-            if len(systemSpecies) != self.nTypes:
-                msg.fatal("It appears that we need to insert zeros in atom_counts, but I don't know where to add them")
-                diff = len(systemSpecies) - self.nTypes
-                self.atom_counts = array(list(self.atom_counts) + [0 for x in range(diff)])
-                self.nTypes = len(self.atom_counts)
-                #                self.species = systemSpecies
-                #            else:
-                #self.species = systemSpecies
-        else:
-            if len(crystalSpecies) != self.nTypes:
-                msg.fatal("The number of species that was read in (POTCAR) does not agree with atom_counts (POSCAR)")
-            #  This is the case when a crystal *with the atomic species* are read in
-            # but it just so happens that the number of species in this crystal does not match
-            # the number of species in the system being studied.  In this case, we need to specify which
-            # atomic system species are missing from this particular crystal.  We do this by augmenting zeros
-            # to atom_counts at the appropriate location.  
-            elif len(crystalSpecies) != len(systemSpecies):
-                from numpy import insert
-                lacking = list(set(systemSpecies) - set(crystalSpecies))
-                indices = [systemSpecies.index(x) for x in sorted(lacking,reverse = True)]
-                for idx,ele in enumerate(indices):
-                    self.atom_counts = insert(self.atom_counts,ele,0) # + idx ???
-                if len(lacking) > 1:
-                    print(" I haven't tested this case, can you verify that it's working the way it should")
-                    print("The system species is {}, and the crystal species is {} and our new atom counts is {}.".format( systemSpecies,crystalSpecies,self.atom_counts))
-#                    import sys
-#                    sys.exit()
-                    # self.species = systemSpecies
-                self.nTypes = len(self.atom_counts)
-                # else:
+    def _add_zeros(self):
+        print('running add zeros!!!')
+        if len(self.systemSpecies) == self.nTypes:
+            msg.info("No need to add zeros to the atom_types list, the number of types matches the species list")
+            return
+        elif any(x is None for x in [self.systemSpecies, self.crystalSpecies]):
+            self.speciesMismatch = True
+            msg.info("I need to know the species list for the system and this crystal to proceed adding zeros in ")
+            return
+        
+        if len(self.crystalSpecies) != self.nTypes:
+            print(self.crystalSpecies, self.nTypes)
+            msg.fatal("The number of species that was read in (POTCAR) does not agree with atom_counts (POSCAR)")
 
-                #self.species = systemSpecies
 
+
+        #  This is the case when a crystal *with the atomic species* are read in
+        # but it just so happens that the number of species in this crystal does not match
+        # the number of species in the system being studied.  In this case, we need to specify which
+        # atomic system species are missing from this particular crystal.  We do this by augmenting zeros
+        # to atom_counts at the appropriate location.  
+        if len(self.systemSpecies) != len(self.crystalSpecies):
+            from numpy import insert
+            lacking = list(set(self.systemSpecies) - set(self.crystalSpecies))
+            indices = [self.systemSpecies.index(x) for x in sorted(lacking,reverse = True)]
+            for idx,ele in enumerate(indices):
+                self.atom_counts = insert(self.atom_counts,ele,0) # + idx ???
+            if len(lacking) > 1:
+                print(" I haven't tested this case, can you verify that it's working the way it should")
+                print("The system species is {}, and the crystal species is {} and our new atom counts is {}.".format( self.systemSpecies,self.crystalSpecies,self.atom_counts))
+            self.nTypes = len(self.atom_counts)
+            self.crystalSpecies = self.systemSpecies
+            if len(self.crystalSpecies) != self.nTypes:
+                msg.fatal('Species list ({})is not consistent with the number of atom types  ({})'.format(self.crystalSpecies,self.nTypes))
 
     def randomDisplace(self):
         from numpy.random import randn
@@ -299,7 +302,7 @@ class Crystal(object):
         self.nTypes = len(self.atom_counts)
  
         self.coordsys = crystalDict["coordsys"]
-        self.species = crystalDict["species"]
+        self.crystalSpecies = crystalDict["species"]
         if sorted(self.species,reverse = True) != self.species:
             msg.fatal("The order of your atomic species is not in reverse alphabetical order... OK?")
         
@@ -486,65 +489,65 @@ class Crystal(object):
     # determine whether alternating (100) planes is possible for the given
     # crystal structure.  Need to generalize to any direction and any
     # alternating pattern.
-    def getAFMPlanes(self,direction):
-        from numpy import sort,array,where,any
-        from numpy.linalg import norm
-
-        if self.atom_counts[0] < 2:
-            return []
-        self.findNeighbors(0.75 * norm(self.latpar * self.lattice[0]+self.latpar * self.lattice[1]+self.latpar * self.lattice[2]) )
-        # Find all of the A atoms
-        aAtoms = where(array(self.atom_types) == 0)[0]
-        # Get position vectors for all of the A atoms,
-        locationAatoms = [basis[idy] for idx,basis in enumerate(self.neighbors) for idy,y in enumerate(basis) if basis[idy][2] in aAtoms]
-
-        eps = 1e-1
-        # Build a dictionary, one list for every plane of atoms
-        planesDict = {}
-
-        # Sometimes after a relaxation, atoms will have moved slightly off of their ideal
-        # planes.  So we need to check to see if atoms are close to their planes.
-        for idx,atom in enumerate(locationAatoms):
-            if not any(abs(array([x for x in planesDict.keys()]) - atom[0][0]) < eps): #Found new plane
-#                print('new plane found')
-#                print(atom[0][0], 'x  coord')
-#                print(atom, 'full atom to record')
-#            if atom[0][0] not in planesDict:
-                planesDict[atom[0][0]] = [atom]
-            else:  #Adding an atom to a plane that I already found
- #               print('adding atom to previously found plane.')
-                loc = abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin()
-                planeAdd = array([x for x in planesDict.keys()])[loc]
- #               print(list(planesDict.keys()), "planes found thus far")
- #               print(array([x for x in planesDict.keys()]) - atom[0][0], 'diffs')
- ##               print(abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin(), 'location of min')
- #               print("Placing atom {} in plane {}.".format(atom,planeAdd))
-                planesDict[planeAdd].append(atom)
-        planes = sorted(list(planesDict.keys()))
-  #      print(planes, 'here are the planes')
-  #      print(planesDict,' planesDict')
-        nPlanes = len(planes)
-        planesAtoms = [set([x[2] for x in planesDict[y]]) for y in planes  ]
-        evenPlanes = set([x for y in range(0,nPlanes,2) for x  in planesAtoms[y] ])
-        oddPlanes = set([x for y in range(1,nPlanes,2) for x  in planesAtoms[y] ])
-#        print(evenPlanes, 'even planes')
-#        print(oddPlanes, 'odd planes')
-        check = [x in evenPlanes for x in oddPlanes]
-        if any(check):
-            self.AFMPlanes = None
-           # print(planes, 'here are the planes')
-           # print(evenPlanes, 'even planes')
-           # print(oddPlanes, 'odd planes')
-           # print(planesDict,' planes dict')
-            return False
-        else:
-            self.AFMPlanes = [0 for x in aAtoms]
-            for i in evenPlanes:
-                self.AFMPlanes[i] = 2
-            for i in oddPlanes:
-                self.AFMPlanes[i] = -2
-            print(evenPlanes,oddPlanes, self.AFMPlanes,' check AFM results') 
-            return True
+#    def getAFMPlanes(self,direction):
+#        from numpy import sort,array,where,any
+#        from numpy.linalg import norm
+#
+#        if self.atom_counts[0] < 2:
+#            return []
+#        self.findNeighbors(0.75 * norm(self.latpar * self.lattice[0]+self.latpar * self.lattice[1]+self.latpar * self.lattice[2]) )
+#        # Find all of the A atoms
+#        aAtoms = where(array(self.atom_types) == 0)[0]
+#        # Get position vectors for all of the A atoms,
+#        locationAatoms = [basis[idy] for idx,basis in enumerate(self.neighbors) for idy,y in enumerate(basis) if basis[idy][2] in aAtoms]
+#
+#        eps = 1e-1
+#        # Build a dictionary, one list for every plane of atoms
+#        planesDict = {}
+#
+#        # Sometimes after a relaxation, atoms will have moved slightly off of their ideal
+#        # planes.  So we need to check to see if atoms are close to their planes.
+#        for idx,atom in enumerate(locationAatoms):
+#            if not any(abs(array([x for x in planesDict.keys()]) - atom[0][0]) < eps): #Found new plane
+##                print('new plane found')
+##                print(atom[0][0], 'x  coord')
+##                print(atom, 'full atom to record')
+##            if atom[0][0] not in planesDict:
+#                planesDict[atom[0][0]] = [atom]
+#            else:  #Adding an atom to a plane that I already found
+# #               print('adding atom to previously found plane.')
+#                loc = abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin()
+#                planeAdd = array([x for x in planesDict.keys()])[loc]
+# #               print(list(planesDict.keys()), "planes found thus far")
+# #               print(array([x for x in planesDict.keys()]) - atom[0][0], 'diffs')
+# ##               print(abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin(), 'location of min')
+# #               print("Placing atom {} in plane {}.".format(atom,planeAdd))
+#                planesDict[planeAdd].append(atom)
+#        planes = sorted(list(planesDict.keys()))
+#  #      print(planes, 'here are the planes')
+#  #      print(planesDict,' planesDict')
+#        nPlanes = len(planes)
+#        planesAtoms = [set([x[2] for x in planesDict[y]]) for y in planes  ]
+#        evenPlanes = set([x for y in range(0,nPlanes,2) for x  in planesAtoms[y] ])
+#        oddPlanes = set([x for y in range(1,nPlanes,2) for x  in planesAtoms[y] ])
+##        print(evenPlanes, 'even planes')
+##        print(oddPlanes, 'odd planes')
+#        check = [x in evenPlanes for x in oddPlanes]
+#        if any(check):
+#            self.AFMPlanes = None
+#           # print(planes, 'here are the planes')
+#           # print(evenPlanes, 'even planes')
+#           # print(oddPlanes, 'odd planes')
+#           # print(planesDict,' planes dict')
+#            return False
+#        else:
+#            self.AFMPlanes = [0 for x in aAtoms]
+#            for i in evenPlanes:
+#                self.AFMPlanes[i] = 2
+#            for i in oddPlanes:
+#                self.AFMPlanes[i] = -2
+#            print(evenPlanes,oddPlanes, self.AFMPlanes,' check AFM results') 
+#            return True
     @property
     def Bv_direct(self):
         from numpy import sum as nsum, array,dot
@@ -630,7 +633,7 @@ class Crystal(object):
         """Return \n joined basis vector text lines."""
         species = []
         for i,n in enumerate(self.atom_counts):
-            species += [self.species[i] ] * n 
+            species += [self.crystalSpecies[i] ] * n 
         return '\n'.join( [' '.join(list(map(str,y)) + [species[x]] ) for x,y in enumerate(self.basis)])
 
     def mtpLines(self,relax = False):
@@ -706,8 +709,9 @@ class Crystal(object):
     def write(self, filename, fileformat = 'vasp'):
         """Writes the contents of this POSCAR to the specified file."""
         #fullpath = os.path.abspath(filepath)
-        with open(filename, 'w') as f:
-            f.write('\n'.join(self.lines(fileformat)))
+        if not self.speciesMismatch:
+            with open(filename, 'w') as f:
+                f.write('\n'.join(self.lines(fileformat)))
 
 
     def concsOK(self,concRestrictions=None):
@@ -744,27 +748,18 @@ class Crystal(object):
     @property
     def symbol(self):
         symbol = ''
-        for elem, count in zip(self.species,self.atom_counts):
+        for elem, count in zip(self.systemSpecies,self.atom_counts):
                 symbol += elem + '_' + str(count)
-#        if self.calcResults is not None and "species" in self.calcResults:
-#            for elem, count in zip(self.calcResults["species"],self.atom_counts):
-#                symbol += elem + '_' + str(count) + '-'
-#        else:
-#            for elem, count in zip(self.species,self.atom_counts):
-#                symbol += elem + '_' + str(count)
-#        symbol += '     ' + self.title  + '    '
-#        symbol += self.filepath
         return symbol
         
     def set_latpar(self):
         from aBuild.calculators import data
         #if self.latpar == 1.0 or self.latpar < 0:
             # We must first reverse sorte the species list so we get the right atom in the right place.
-        if sorted(self.species,reverse = True) != self.species:
+        if sorted(self.crystalSpecies,reverse = True) != self.crystalSpecies:
             msg.fatal("Your species are not in reverse alphabetical order... OK?")
-
-        self.latpar = data.vegardsVolume(self.species,self.atom_counts,self.volume)
-
+        aself.latpar = data.vegardsVolume(self.crystalSpecies,self.atom_counts,self.volume)
+        
     def from_poscar(self,filepath):
         """Returns an initialized Lattice object using the contents of the
         POSCAR file at the specified filepath.
@@ -772,34 +767,39 @@ class Crystal(object):
         :arg strN: an optional structure number. If the label in the POSCAR doesn't
           already include the strN, it will be added to the title.
         """
+        
         from aBuild.calculators.vasp import POSCAR
         lines = POSCAR(filepath)
         from numpy import array
         #First get hold of the compulsory lattice information for the class
-        try:
-            self.lattice = array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
-            self.basis = array([list(map(float, b.strip().split()[0:3])) for b in lines.Bv])
-            self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
-            typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
-            self.atom_types = []
-            for i in typesList:
-                self.atom_types += i
+ #       try:
+        self.lattice = array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
+        print(lines.Bv)
+        self.basis = array([list(map(float, b.strip().split()[:3])) for b in lines.Bv])
+        print(self.crystalSpecies, 'HERE')
+        if lines.species is not None:
+            if self.crystalSpecies is None:
+                # No species passed in, found species in POSCAR, let's use it.
+                self.crystalSpecies = lines.species
+            elif self.crystalSpecies != lines.species:
+                # Why don't they agree?
+                msg.fatal('It appears that the species in the POTCAR file does not agree with the POSCAR file')
+                
+        self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
+        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
+        self.atom_types = []
+        for i in typesList:
+            self.atom_types += i
             
-            self.latpar = float(lines.latpar.split()[0])
-            if self.latpar == 1.0 or self.latpar < 0:
-                self.latpar = None
-            #print(self.latpar, 'lat par read in')
-            self.coordsys = lines.coordsys
-            #            self.title  = lines.label
-#            if len(lines.label) > 50:
- #               self.title = path.split(filepath)[0].split('/')[-1] + '_proto'
- #           else:
-            self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
-            self.nAtoms = sum(self.atom_counts)
-            self.nTypes = len(self.atom_counts)
+        self.latpar = float(lines.latpar.split()[0])
+        self.coordsys = lines.coordsys
+
+        self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
+        self.nAtoms = sum(self.atom_counts)
+        self.nTypes = len(self.atom_counts)
  
-        except:
-            raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(self.filePath))
+#        except:
+#            raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
 
     @property
     def reportline(self):
@@ -857,13 +857,18 @@ class Crystal(object):
         self.nAtoms = len(self.basis)
         self.coordsys = 'C'
         self.atom_types = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
+        print(list(set(self.atom_types)),'list')
+        self.crystalSpecies = [self.systemSpecies[x] for x in list(set(self.atom_types))]
+        print("PLEASE CHECK THAT THIS IS CORRECT!!!!!",self.crystalSpecies, "CRYSTAL SPECIES")
         self.results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
         self.atom_counts = array([ self.atom_types.count(x) for x in set(self.atom_types)]) #range(max(atoms)+1)
         self.nTypes = len(self.atom_counts)
         # THe add_zeros function is here in case you run into a config with few atom types than the
         # system being studied. Like running into a pure config for a binary system.  Or a binary config
-        # when studying a ternary system.
-        self._add_zeros(self.species,[self.species[x] for x in list(set(self.atom_types))])
+        # when studying a ternary system. Commented out because the add_zeros function gets called in
+        # the initializer anyway.  No need to call it twice.
+        #self.species = [self.systemSpecies[x] for x in list(set(self.atom_types))]
+        #self._add_zeros(self.systemSpecies,self.species)
         titleindex = ['conf_id' in x for x in lines].index(True)
         self.title = ' '.join(lines[titleindex].split()[2:])
         if any(['Energy' in x for x in lines] ):
@@ -881,7 +886,6 @@ class Crystal(object):
 #            self.results["fEnth"] = self.results["energyF"]/self.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.concentrations[i] for i in range(self.nTypes)])
         else:
             self.results = None
-        self.latpar = 1.0
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')
 #        self.set_latpar()
@@ -896,7 +900,7 @@ class Crystal(object):
 
 
         enumLattice.generatePOSCAR(struct)
-        result = Crystal.fromPOSCAR(enumLattice.root, self.species,
+        result = Crystal.fromPOSCAR(enumLattice.root, self.systemSpecies,
                                          filename = "poscar.{}.{}".format(lat,struct),
                                          title = ' '.join([lat," str #: {}"]).format(struct))
 
@@ -961,8 +965,8 @@ class Crystal(object):
 
             count += 1
             basDirect = [map_into_cell(_chop_all(1e-4,map_into_cell(convert_direct(lattice*self.latpar, x)))) for x in self.Bv_cartesian]
-            crystalDict = {"lattice":lattice, "basis":basDirect, "coordsys":'D', "atom_counts":[x for x in self.atom_counts],"species":self.species,"latpar":self.latpar,"title":self.title + '_super'}
-            newCrystal = Crystal(crystalDict,self.species)
+            crystalDict = {"lattice":lattice, "basis":basDirect, "coordsys":'D', "atom_counts":[x for x in self.atom_counts],"species":self.systemSpecies,"latpar":self.latpar,"title":self.title + '_super'}
+            newCrystal = Crystal(crystalDict,self.sytemSpecies)
             if newCrystal.orthogonality_defect/self.orthogonality_defect > 2:
                 print('Cell is too skew, not considering it')
                 continue
