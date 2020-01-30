@@ -756,9 +756,10 @@ class Crystal(object):
         from aBuild.calculators import data
         #if self.latpar == 1.0 or self.latpar < 0:
             # We must first reverse sorte the species list so we get the right atom in the right place.
+        print(self.crystalSpecies, 'check')
         if sorted(self.crystalSpecies,reverse = True) != self.crystalSpecies:
             msg.fatal("Your species are not in reverse alphabetical order... OK?")
-        aself.latpar = data.vegardsVolume(self.crystalSpecies,self.atom_counts,self.volume)
+        self.latpar = data.vegardsVolume(self.crystalSpecies,self.atom_counts,self.volume)
         
     def from_poscar(self,filepath):
         """Returns an initialized Lattice object using the contents of the
@@ -777,14 +778,21 @@ class Crystal(object):
         print(lines.Bv)
         self.basis = array([list(map(float, b.strip().split()[:3])) for b in lines.Bv])
         print(self.crystalSpecies, 'HERE')
+        print(lines.species,' HERE')
         if lines.species is not None:
+            print("Found species information from POSCAR")
             if self.crystalSpecies is None:
+                print("No species information passed in, setting species info from POSCAR")
                 # No species passed in, found species in POSCAR, let's use it.
                 self.crystalSpecies = lines.species
             elif self.crystalSpecies != lines.species:
                 # Why don't they agree?
                 msg.fatal('It appears that the species in the POTCAR file does not agree with the POSCAR file')
-                
+        else:
+            print("Cannot find species information from POSCAR")
+            if self.crystalSpecies is None:
+                print("No species information was passed in.  Setting crystalSpecies to systemSpecies")
+                self.crystalSpecies = self.systemSpecies
         self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
         typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
         self.atom_types = []
