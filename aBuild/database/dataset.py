@@ -266,6 +266,11 @@ class dataset:
 
         # Build the submission script
         exdir = path.join(buildpath,'A.')
+        if calculator['active'] == 'aflow':
+            calculator["execution"]["exec_path"] = "aflow --run"
+        elif calculator["active"] == 'vasp':
+            calculator["execution"]["exec_path"] = "vasp6_serial"
+    
         mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = startPoint,arrayEnd = configIndex - 1)
         with chdir(buildpath):
             print('Building job file')
