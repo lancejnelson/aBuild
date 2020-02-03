@@ -868,7 +868,10 @@ class Crystal(object):
         print(list(set(self.atom_types)),'list')
         self.crystalSpecies = [self.systemSpecies[x] for x in list(set(self.atom_types))]
         print("PLEASE CHECK THAT THIS IS CORRECT!!!!!",self.crystalSpecies, "CRYSTAL SPECIES")
-        self.results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
+        if len(lines[8]) > 5:
+            self.results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
+        else:
+            self.results["forces"] = None
         self.atom_counts = array([ self.atom_types.count(x) for x in set(self.atom_types)]) #range(max(atoms)+1)
         self.nTypes = len(self.atom_counts)
         # THe add_zeros function is here in case you run into a config with few atom types than the
@@ -893,7 +896,7 @@ class Crystal(object):
 #                puresDict[spec] = pures[ispec].crystal.results["energypatom"]
 #            self.results["fEnth"] = self.results["energyF"]/self.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.concentrations[i] for i in range(self.nTypes)])
         else:
-            self.results = None
+            self.results["energyF"] = None
         if sum(self.atom_counts) != nAtoms:
             msg.fatal('atomCounts didn\'t match up with total number of atoms')
 #        self.set_latpar()

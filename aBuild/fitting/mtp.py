@@ -441,7 +441,8 @@ class MTP(object):
         # 3. Concatenate all of the relaxed.cfg_# into one file.  This file should
         #    get bigger and bigger with each iteration (Hopefully), but we don't ever
         #    want to delete one of these files.
-        # 4. Build a submission script.
+        # 4.  Save the old new_training.cfg
+        # 5. Build a submission script.
 
         # Find what iteration we are currently on.
         candIterationFiles = glob(path.join(self.root,"candidate_iteration_*"))
@@ -506,6 +507,9 @@ class MTP(object):
         else:
             msg.info("Can't find relax_log.txt_* files to concatenate")
 
-
-        # 6.  Build job submission script.
+        #6. save the new_training.cfg
+        copy( path.join(self.root,'new_training.cfg'), path.join(self.root,"new_training_iteration_" + str(iteration) + ".cfg") )
+        remove(path.join(self.root,'new_training.cfg'))
+        
+        # 7.  Build job submission script.
         self.select_add(self.settings["execution"])

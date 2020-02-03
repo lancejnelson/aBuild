@@ -135,10 +135,6 @@ class dataset:
         root = os.getcwd()
 
 
-        pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
-        puresDict = {}
-        for ispec,spec in enumerate(self.species):
-            pures[ispec].read_results()
         for index,line in enumerate(lines):
             if 'BEGIN' in line:
                 indexStart = index
@@ -149,17 +145,31 @@ class dataset:
                 nCrystals += 1
                 
                 thisCrystal = Crystal(structlines,self.species,lFormat = 'mlp')
-                if thisCrystal.results == None:
-                    if thisCrystal.minDist > 1.5:
-                        self.crystals.append(thisCrystal)
+                if thisCrystal.minDist > 1.5:
+                    if thisCrystal.results["energyF"] != None:
+                        try:
+                            # Try to get the formation enthalpy if possible.
+                            pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
+                            puresDict = {}
+                            for ispec,spec in enumerate(self.species):
+                                pures[ispec].read_results()
+                            thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
+                        except:
+                            # If pure information is not available, not possible to get formation energy.
+                            thisCrystal.results["fEnth"] = None
+                    self.crystals.append(thisCrystal)
                 else:
-                    thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
-                    if thisCrystal.results["energyF"] < 100 and thisCrystal.minDist > 1.5:
-                        self.crystals.append(thisCrystal)
-                    else:
-                        print("Not adding structure {}.  Seems like an extreme one.".format(thisCrystal.title))
-                        print("Energy: {}".format(thisCrystal.results["energyF"]))
-                        print("MinDist: {}".format(thisCrystal.minDist))
+                    msg.warn("Mindist is pretty small for this one, so I'm not gonna add it")
+#                if thisCrystal.results == None:
+#                    if thisCrystal.minDist > 1.5:
+#                        self.crystals.append(thisCrystal)
+#                else:
+#                    if thisCrystal.results["energyF"] < 100 and thisCrystal.minDist > 1.5:
+#                        self.crystals.append(thisCrystal)
+#                    else:
+#                        print("Not adding structure {}.  Seems like an extreme one.".format(thisCrystal.title))
+#                        print("Energy: {}".format(thisCrystal.results["energyF"]))
+#                        print("MinDist: {}".format(thisCrystal.minDist))
 
 
 
