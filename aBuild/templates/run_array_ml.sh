@@ -23,8 +23,8 @@
 
 # Set the max number of threads to use for programs using OpenMP. Should be <= ppn. Does nothing if the program doesn't use OpenMP.
 export OMP_NUM_THREADS=$SLURM_CPUS_ON_NODE
-
-cd {{ execution_path }}$SLURM_ARRAY_TASK_ID
+FOLDER_NUMBER=$(( $SLURM_ARRAY_TASK_ID + {{ offset }}  ))
+cd {{ execution_path }}$FOLDER_NUMBER
 
 {%- if modules_unload %}
 {%- for modname in modules_unload %}

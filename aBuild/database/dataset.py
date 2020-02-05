@@ -155,7 +155,7 @@ class dataset:
                                 pures[ispec].read_results()
                             thisCrystal.results["fEnth"] = thisCrystal.results["energyF"]/thisCrystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * thisCrystal.concentrations[i] for i in range(thisCrystal.nTypes)])
                         except:
-                            # If pure information is not available, not possible to get formation energy.
+                            # If pure information is not available, not possible to get formation ener
                             thisCrystal.results["fEnth"] = None
                     self.crystals.append(thisCrystal)
                 else:
@@ -225,8 +225,9 @@ class dataset:
         from aBuild.calculators.lammps import LAMMPS
         from aBuild.calculators.espresso import ESPRESSO
         from aBuild.jobs import Job
-
+        from math import floor
         import os
+
         print("Building folders in {}".format(buildpath))
         if not path.isdir(buildpath):
                 os.mkdir(buildpath)
@@ -280,12 +281,33 @@ class dataset:
             calculator["execution"]["exec_path"] = "aflow --run"
         elif calculator["active"] == 'vasp':
             calculator["execution"]["exec_path"] = "vasp6_serial"
-    
-        mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = startPoint,arrayEnd = configIndex - 1)
-        with chdir(buildpath):
-            print('Building job file')
-            mljob.write_jobfile('jobscript_vasp.sh')
 
+        
+        startAdder = int(floor(startPoint/1000)) * 1000
+        endAdder = int(floor((configIndex - 1)/1000)) * 1000
+
+        if startAdder == endAdder:  # Don't need to submit two jobs in this case.  Just one, but we might have to add an offset if the numbers are too high.
+            msg.info("Building one job submission file")
+            calculator["execution"]["offset"] = startAdder 
+            mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = startPoint-startAdder,arrayEnd = configIndex - 1 - endAdder)
+            with chdir(buildpath):
+                print('Building job file')
+                mljob.write_jobfile('jobscript_vasp.sh')
+        else:  # We're going to have to submit two jobs to span the whole job array.
+            msg.info("Building two job submission files")
+            #First job..
+            calculator["execution"]["offset"] = startAdder 
+            mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = startPoint - startAdder,arrayEnd = 999)
+            with chdir(buildpath):
+                print('Building job file')
+                mljob.write_jobfile('jobscript_vasp_1.sh')
+                    
+            calculator["execution"]["offset"] = endAdder - 1
+            mljob = Job(calculator["execution"],exdir,calculator["execution"]["exec_path"], arrayStart = 1,arrayEnd = configIndex - endAdder)
+            with chdir(buildpath):
+                print('Building job file')
+                mljob.write_jobfile('jobscript_vasp_2.sh')
+                
 
 
 

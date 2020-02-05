@@ -13,6 +13,8 @@ class Job:
         else:
             self.arrayJob = False
 
+        if "offset" not in self.jobSettings.keys():
+            self.jobSettings["folder_number"] = 0
 
     def write_jobfile(self,target):
 
