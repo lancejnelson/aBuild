@@ -31,7 +31,7 @@ class AFLOW:
     # with the crystal and the species information.
             
     def _init_dict(self,specs):
-        print(specs)
+       
         self.aflowin = specs['aflowin']
         if specs['incar']['build'] != 'auto':
             self.INCAR = INCAR(specs["incar"])
@@ -138,9 +138,9 @@ class AFLOW:
         return 'done'
 
     def buildFolder(self):
-        self.crystal.write('POSCAR.orig')
-        self.check_atom_counts_zero()
-        self.crystal.write('POSCAR')
+        self.crystal.write('POSCAR.orig',keepZeros = True)
+#        self.check_atom_counts_zero()
+        self.crystal.write('POSCAR',keepZeros = False)
         self.writeaflowfromposcar('POSCAR')
         self.modifyaflowin()
         self.KPOINTS.rGP = True

@@ -222,7 +222,6 @@ class Crystal(object):
     # present and which are not.  In other words, our standard for the Crystal object is that the number of species
     # will *always* be equal to the order of the system. No exceptions!
     def _add_zeros(self):
-        print('running add zeros!!!')
         if len(self.systemSpecies) == self.nTypes:
             msg.info("No need to add zeros to the atom_types list, the number of types matches the species list")
             return
@@ -248,13 +247,12 @@ class Crystal(object):
             indices = [self.systemSpecies.index(x) for x in sorted(lacking,reverse = True)]
             for idx,ele in enumerate(indices):
                 self.atom_counts = insert(self.atom_counts,ele,0) # + idx ???
-            if len(lacking) > 1:
-                print(" I haven't tested this case, can you verify that it's working the way it should")
-                print("The system species is {}, and the crystal species is {} and our new atom counts is {}.".format( self.systemSpecies,self.crystalSpecies,self.atom_counts))
             self.nTypes = len(self.atom_counts)
             self.crystalSpecies = self.systemSpecies
             if len(self.crystalSpecies) != self.nTypes:
                 msg.fatal('Species list ({})is not consistent with the number of atom types  ({})'.format(self.crystalSpecies,self.nTypes))
+        if self.crystalSpecies != self.systemSpecies:
+            msg.fatal("Function add_zeros unsuccessful")
 
     def randomDisplace(self):
         from numpy.random import randn
@@ -679,17 +677,23 @@ class Crystal(object):
         result.append('END_CFG\n')
         return result
     
-    def vasplines(self):
+    def vasplines(self,keepZeros = False):
         """Returns a list of strings for each line in the POSCAR file.
-
+       
         :arg vasp: when true, the atom_counts line is checked for zeros before
           it is created. Vasp can't handle zero for the number of atoms of a
           certain type; just remove it."""
+        from numpy import where
         result = []
         result.append(self.title)
         result.append(str(self.latpar))
         result.append(self.lattice_lines)
-        result.append(' '.join(map(str,self.atom_counts)))
+        
+        idxKeep = list(where( self.atom_counts > 0)[0])
+        if keepZeros:
+            result.append(' '.join(map(str,self.atom_counts)))
+        else:
+            result.append(' '.join(map(str,self.atom_counts[idxKeep])))
         #        if vasp:
         #    result.append(' '.join([a for a in self.atom_counts if a != '0' and a != ' ']))
         #else:
@@ -698,20 +702,20 @@ class Crystal(object):
         result.append(self.basis_lines)
         return result
 
-    def lines(self,fileformat):
+    def lines(self,fileformat,keepZeros = False):
         if fileformat.lower() == 'vasp':
-            return self.vasplines()
+            return self.vasplines(keepZeros = keepZeros)
         elif fileformat.lower() == 'mtptrain':
             return self.mtpLines()
         elif fileformat.lower() == 'mtprelax':
             return self.mtpLines(relax = True)
 
-    def write(self, filename, fileformat = 'vasp'):
+    def write(self, filename, fileformat = 'vasp',keepZeros = False):
         """Writes the contents of this POSCAR to the specified file."""
         #fullpath = os.path.abspath(filepath)
         if not self.speciesMismatch:
             with open(filename, 'w') as f:
-                f.write('\n'.join(self.lines(fileformat)))
+                f.write('\n'.join(self.lines(fileformat,keepZeros=keepZeros)))
 
 
     def concsOK(self,concRestrictions=None):
@@ -756,7 +760,6 @@ class Crystal(object):
         from aBuild.calculators import data
         #if self.latpar == 1.0 or self.latpar < 0:
             # We must first reverse sorte the species list so we get the right atom in the right place.
-        print(self.crystalSpecies, 'check')
         if sorted(self.crystalSpecies,reverse = True) != self.crystalSpecies:
             msg.fatal("Your species are not in reverse alphabetical order... OK?")
         self.latpar = data.vegardsVolume(self.crystalSpecies,self.atom_counts,self.volume)
@@ -775,10 +778,7 @@ class Crystal(object):
         #First get hold of the compulsory lattice information for the class
  #       try:
         self.lattice = array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
-        print(lines.Bv)
         self.basis = array([list(map(float, b.strip().split()[:3])) for b in lines.Bv])
-        print(self.crystalSpecies, 'HERE')
-        print(lines.species,' HERE')
         if lines.species is not None:
             print("Found species information from POSCAR")
             if self.crystalSpecies is None:
@@ -865,9 +865,7 @@ class Crystal(object):
         self.nAtoms = len(self.basis)
         self.coordsys = 'C'
         self.atom_types = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
-        print(list(set(self.atom_types)),'list')
         self.crystalSpecies = [self.systemSpecies[x] for x in list(set(self.atom_types))]
-        print("PLEASE CHECK THAT THIS IS CORRECT!!!!!",self.crystalSpecies, "CRYSTAL SPECIES")
         if len(lines[8]) > 5:
             self.results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
         else:

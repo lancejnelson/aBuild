@@ -40,7 +40,6 @@ class VASP:
                 self.handleSpecialTags(specs)
                     
                 self.INCAR = INCAR(specs["incar"])
-                
             else:
                 msg.fatal("I don't have all the necessary information to initialize: {}".format(specs.keys()))
         #Initialize from a path
@@ -106,7 +105,9 @@ class VASP:
             idxKeep = list(where( self.crystal.atom_counts > 0)[0])
             self.POTCAR.species = list(array(self.POTCAR.species)[idxKeep])
             self.crystal.atom_counts = self.crystal.atom_counts[idxKeep]
-            self.crystal.species = self.POTCAR.species
+
+            self.crystal.crystalSpecies = self.POTCAR.species
+            print(self.crystal.crystalSpecies)
     def _check_tag_exists(self,filename,tag):
         from aBuild.utility import grep
         print('checking that {} tag exists in file {}'.format(tag,filename))
@@ -315,18 +316,23 @@ class VASP:
         return result
 
     def buildFolder(self,runGetKPoints = True):
+        print(self.POTCAR.species, 'check here')
+        from numpy import  where
         from aBuild.calculators.vasp import POSCAR
         self.KPOINTS.rGP = runGetKPoints
         self.INCAR.writeINCAR()
         print("INCAR built")
-        self.crystal.write('POSCAR_orig')
+        print(self.crystal.crystalSpecies,' species')
+        self.crystal.write('POSCAR.orig',keepZeros = True)
         print("POSCAR_orig built")
-        self.check_atom_counts_zero()
-        self.crystal.write('POSCAR')
+        #self.check_atom_counts_zero()  # This routine modifies POTCAR.species and crystal.crystalSpecies. Bad idea...?
+        self.crystal.write('POSCAR',keepZeros = False)
         print("POSCAR built")
         self.KPOINTS.writeKPOINTS()
         print("KPOINTS built")
-        self.POTCAR.writePOTCAR()
+        idxKeep = list(where( self.crystal.atom_counts > 0)[0])
+
+        self.POTCAR.writePOTCAR(indices = idxKeep)
         #print("POTCAR built")
 
         
@@ -441,7 +447,7 @@ class VASP:
                     stress = None
         return stress
 
-    def read_results(self, allElectronic = False, allIonic=False):
+    def read_results(self, allElectronic = False, allIonic=False,mustHave = ['free energy','stress','species','formation energy']):
         if self.directory is not None and self.status() == 'done':
             with chdir(self.directory):
                 self.crystal.results = {}
@@ -458,10 +464,10 @@ class VASP:
                     self.crystal.results["fEnth"] = self.formationEnergy
                 else:
                     self.crystal.results["fEnth"] = 0
+                msg.info("Succesfully read in results")
         else:
-            print(self.status(), 'not reading results')
             self.crystal.results = None
-            msg.info("Unable to extract necessary information from directory! ({})".format(self.directory))
+            msg.info("Unable to extract necessary information from directory! ({}).  Status: {} ".format(self.directory,self.status))
             
     def add_to_results(self,key,item):
         if self.crystal.results is None:
@@ -473,8 +479,6 @@ class VASP:
         from os import path
         pures = []
         for i in range(self.crystal.nTypes):
-            print(self.directory, self.crystal.systemSpecies, "HERE")
-            print(i,' I')
             pureDir = path.join(path.split(self.directory)[0], 'pure' + self.crystal.systemSpecies[i])
             if path.isdir(pureDir):
                 pureVASP = VASP(pureDir,systemSpecies = self.crystal.systemSpecies)
@@ -562,7 +566,7 @@ class POTCAR:
         self.species.reverse()
         pots = [path.join(self.srcdirectory,x + self.setups[x],'POTCAR') for x in self.species]
         if all([isfile(x) for x in pots]):
-            print('found files')
+            print('Found POTCAR files')
             potsGood = True
             for pot in pots:
                 with open(pot, 'r') as f:
@@ -572,17 +576,20 @@ class POTCAR:
             
             return potsGood
         else:
-            print("can't find files")
+            print("can't find POTCAR files")
             return False
         
-    def writePOTCAR(self,filename = 'POTCAR'):
+    def writePOTCAR(self,indices=None,filename = 'POTCAR'):
+        from numpy import array
         if self.build == 'aflow':
             return
         if not self._potcarsOK():
             ermsg = "Can't find the POTCARS you specified: {}".format(self.versions)
             msg.fatal(ermsg)
-        srcpaths = [path.join(self.srcdirectory,x + self.setups[x],'POTCAR') for x in self.species]
-
+        if indices is not None:
+            srcpaths = [path.join(self.srcdirectory,x + self.setups[x],'POTCAR') for x in array(self.species)[indices]]
+        else:
+            srcpaths = [path.join(self.srcdirectory,x + self.setups[x],'POTCAR') for x in self.species]
         from os import waitpid
         from subprocess import Popen
 
@@ -597,7 +604,10 @@ class INCAR:
     def __init__(self,specs):
 
         if isinstance(specs,dict):
-            self.tags = specs
+            if 'defaults' in specs and specs["defaults"]:
+                self.setDefaultTags()
+            else:
+                self.tags = specs
         elif isinstance(specs,str):
             self._init_path(specs)
         else:
@@ -635,7 +645,7 @@ class INCAR:
         self.tags["ALGO"] = "Normal"
         self.tags["LWAVE"] = ".FALSE."
         self.tags["LREAL"] = "auto"
-        self.tags["LORBIG"] = "10"
+        self.tags["LORBIT"] = "10"
         
         #    def processTags(self,tags):
         #for key,val in tags.items():
@@ -711,7 +721,7 @@ class KPOINTS:
         
 
         if config.GETKPTS is not None:
-            print('found GETKPTS')
+            print('Found GETKPTS executable')
             if self.rGP:
                 command = "{}".format(config.GETKPTS)
                 child=Popen(command, shell=True, executable="/bin/bash")
@@ -891,7 +901,6 @@ class POSCAR(object):
                 for i in poscarlines[basisStartLine:basisStartLine + nBas]:
                     if i.split()[-1] not in self.species:
                         self.species.append(i.split()[-1])
-                print(self.species,' Check Here')
                 
             else:
                 self.species = None

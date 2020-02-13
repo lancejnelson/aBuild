@@ -182,9 +182,8 @@ class dataset:
         
         self.crystals = []
         for dirpath in paths:
-            print("Initializing from path: {}".format(dirpath))
             if self.calculator == 'VASP':
-                print(systemSpecies, 'Checking system species')
+                print("Initializing VASP object from path: {}".format(dirpath))
                 calc = VASP(dirpath,systemSpecies = systemSpecies)
                 calc.read_results()
 
@@ -195,7 +194,7 @@ class dataset:
 
                 
             if calc.crystal.results is not None:
-                print("not adding this one, it's not ready")
+                print("Adding Crystal")
                 self.crystals.append(calc.crystal)
 
             
@@ -381,7 +380,6 @@ class dataset:
         #data = [[float(x.split()[-4]),float(x.split()[-5] )] for x in lines]
         #data = [[i.results["fEnth"],i.concentrations[0]] for x in self.crystals]
         data = [[self.concs[i],self.formationenergies[i]] for i in range(len(self.formationenergies))]
-        print(data,'data before')
  #       print(data.shape)
         data.append([0.0,0.0])
         data.append([1.0,0.0])
