@@ -666,7 +666,7 @@ class Crystal(object):
 
         if not relax:
             result.append('Energy')
-            result.append(str(self.results["energyF"]) + '')
+            result.append(str(self.results["energyZ"]) + '')
         
         
             result.append(' Stress:   xx          yy           zz            yz           xz           xy')

@@ -141,10 +141,14 @@ class AFLOW:
         self.crystal.write('POSCAR.orig',keepZeros = True)
 #        self.check_atom_counts_zero()
         self.crystal.write('POSCAR',keepZeros = False)
+        self.KPOINTS.rGP = True
+        success = self.KPOINTS.writeKPOINTS()
+        print(success, 'succes?')
+        if not success:
+            msg.info("KPOINTS build failed, reverting to MP grid")
+            self.kpoints_auto_build = True
         self.writeaflowfromposcar('POSCAR')
         self.modifyaflowin()
-        self.KPOINTS.rGP = True
-        self.KPOINTS.writeKPOINTS()
         
 
     def check_atom_counts_zero(self):

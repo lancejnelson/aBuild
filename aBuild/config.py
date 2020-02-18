@@ -13,6 +13,7 @@ class _config(types.ModuleType):
         self._initialized = False
         self.getenvar("MAKESTRX")
         self.getenvar("GETKPTS")
+        self.getenvar("AUTOGR")
         self.getenvar("POTCAR_DIR")
         self.getenvar("INPUT_DIR")
         self.getenvar("RUN_DIR")
@@ -77,6 +78,11 @@ class _config(types.ModuleType):
     def GETKPTS(self):
         """Returns the path to the makestr.x executable."""
         return self.property_get("GETKPTS")
+
+    @property
+    def AUTOGR(self):
+        """Returns the path to the makestr.x executable."""
+        return self.property_get("AUTOGR")
 
     @property
     def UNCLEX(self):

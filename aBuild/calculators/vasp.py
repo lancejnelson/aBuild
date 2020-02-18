@@ -669,9 +669,10 @@ class KPOINTS:
 
 
         if isinstance(specs,dict):
-            self.method = specs["method"]
-            self.density = specs["mindistance"]
-            self.includeGamma = True
+            self.specs = specs
+            #self.method = specs["method"]
+            #self.density = specs["mindistance"]
+            #self.includeGamma = True
         elif isinstance(specs,str):
             self._init_file(specs)
             
@@ -704,17 +705,42 @@ class KPOINTS:
             #            self.
     def writeKPOINTS(self,filename='KPOINTS'):
         
-        methodlookup = {'mueller': self.mueller,'equivalent': self.equivalent, "mp": self.monkPack}
+        methodlookup = {'mueller': self.mueller,'equivalent': self.equivalent, "mp": self.monkPack,"autogr": self.autogr}
+        print(self.specs["method"],' check here')
 
-        if self.method not in ['mueller','equivalent','mp']:
-            mssg.error("I don't recognize the method you have specified: {}".format(self.method))
+        if self.specs["method"] not in ['mueller','equivalent','mp','autogr']:
+            msg.error("I don't recognize the method you have specified: {}".format(self.specs["method"]))
             
-        methodlookup[self.method](filename = filename)
+        return methodlookup[self.specs["method"]](filename = filename)
 
+
+    def autogr(self,filename='KPOINTS'):
+        from os import waitpid,path
+        from subprocess import Popen
+        self.KPGEN()
+        
+
+        if config.AUTOGR is not None:
+            print('Found AUTOGR executable')
+            if self.rGP:
+                command = "{}".format(config.AUTOGR)
+                child=Popen(command, shell=True, executable="/bin/bash")
+                waitpid(child.pid, 0)
+            else:
+                msg.info("Not running the getKpoints script")
+        else:
+            msg.fatal("You haven't defined the environment variable: AUTOGR, so I don't know how to generate KPOINT grids ")
+
+        if not path.isfile('KPOINTS'):
+            print("Can't find KPOINTS")
+            return False
+        else:
+            print("KPOINTS file FOUND")
+            return True
 
 
     def mueller(self,filename='KPOINTS',runGetKpoints = False):
-        from os import waitpid
+        from os import waitpid,path
         from subprocess import Popen
 
         self.PRECALC()
@@ -730,13 +756,31 @@ class KPOINTS:
                 msg.info("Not running the getKpoints script")
         else:
             msg.fatal("You haven't defined the environment variable: GETKPTS, so I don't know how to generate KPOINT grids ")
+        if not path.isfile('KPOINTS'):
+            return False
+        else:
+            return True
 
+
+    def KPGEN(self):
+
+        allowed = ['RMIN','KPDENSITY','KSPACING','KPPRA','SHIFT']
+        lines = []
+        for opt in self.specs.keys():
+            if opt.upper() in allowed:
+                lines.append('{}={}\n'.format(opt.upper(),self.specs[opt]))
+        #lines.append('SHIFT={}\n'.format(self.includeGamma))
+        #lines.append('RMIN={}\n'.format(self.density))
+        with open('KPGEN','w') as f:
+            f.writelines(lines)
 
     def PRECALC(self):
 
         lines = []
-        lines.append('INCLUDEGAMMA={}\n'.format(self.includeGamma))
-        lines.append('MINDISTANCE={}\n'.format(self.density))
+        for opt in self.specs.keys():
+            lines.append('{}={}\n'.format(opt,self.specs[opt]))
+#        lines.append('INCLUDEGAMMA={}\n'.format(self.includeGamma))
+#        lines.append('MINDISTANCE={}\n'.format(self.density))
         with open('PRECALC','w') as f:
             f.writelines(lines)
 
