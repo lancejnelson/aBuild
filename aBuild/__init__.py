@@ -29,9 +29,9 @@ class Controller(object):
         # Read the input file
         self.specs = read(root,inputFile)
 
-        if "directory" not in self.specs["calculator"]["vasp"]["potcars"] or self.specs["calculator"]["vasp"]["potcars"]["directory"] is None:
+        if "directory" not in self.specs["calculator"]["vasp"]["potcar"] or self.specs["calculator"]["vasp"]["potcar"]["directory"] is None:
             print("You did not provide a directory for the POTCARS. Using the environment variable that I found: {}".format(config.POTCAR_DIR))
-            self.specs["calculator"]["potcars"]["directory"] = config.POTCAR_DIR
+            self.specs["calculator"]["potcar"]["directory"] = config.POTCAR_DIR
 
         self.root = path.expanduser(self.specs["root"])  # Set the working directory
 
@@ -197,45 +197,59 @@ class Controller(object):
 
         newTraining = path.join(self.root,'fitting','mtp','new_training.cfg')
         trainingRoot = path.join(self.root,'training_set')
-        dSet = dataset(newTraining,self.species,lFormat = 'mlp')
+        dSet = dataset.from_file(newTraining,self.species,'mlp')
         dSet.buildFolders(trainingRoot,self.calculator,foldername = 'A')
         
     def statusReport(self):
-        from os import path
+        
+        from os import path,listdir,remove
         from glob import glob
         from aBuild.calculators.vasp import VASP
+        from aBuild.calculators.aflow import AFLOW
         trainingRoot = path.join(self.root, 'training_set')
         with chdir(trainingRoot):
             enumdirs = glob("E.*")
             activedirs = glob("A.*")
 
+        delFiles = glob("*.status")
+        for i in delFiles:
+            remove(i)
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-        stat = {'done':[],'running':[], 'not started': [], 'killed before done':[], 'not setup':[],'warning':[],'idk':[],'unconverged':[],'sgrcon':[],'error':[]}
-        for dir in dirs:
-            print('Checking dir:', dir)
-            thisVASP = VASP(dir,systemSpecies = self.species)
-            stat[thisVASP.status()].append(dir.split('/')[-1])
-            msg.info("Status of directory {} is {} ".format(dir,thisVASP.status()))
-        msg.info('Done (' + str(len(stat['done'])) + ')')
-        msg.info(' '.join(stat['done']))
-        msg.info('Running (' + str(len(stat['running'])) + ')')
-        msg.info(' '.join(stat['running']))
-        msg.info('Not Started (' + str(len(stat['not started'])) + ')')
-        msg.info(' '.join(stat['not started']))
-        msg.info('Not Setup (' + str(len(stat['not setup'])) + ')')
-        msg.info(' '.join(stat['not setup']))
-        msg.info('Killed before done (' + str(len(stat['killed before done'])) + ')    (last write was > 1 hr ago) ')
-        msg.info(' '.join(stat['killed before done']))
-        msg.info('Warnings (' + str(len(stat['warning'])) + ')')
-        msg.info(' '.join(stat['warning']))
-        msg.info('Not sure (' + str(len(stat['idk'])) + ')  (Found finish tags but couldn''t find final energy.  It''s probably in the process of finishing.)')
-        msg.info(' '.join(stat['idk']))
-        msg.info('Unconverged (' + str(len(stat['unconverged'])) + ')')
-        msg.info(' '.join(stat['unconverged']))
-        msg.info('SGRCON error (' + str(len(stat['sgrcon'])) + ')')
-        msg.info(' '.join(stat['sgrcon']))
-        msg.info('Unknown error (' + str(len(stat['error'])) + ')')
-        msg.info(' '.join(stat['error']))
+        for idx,directory in enumerate(dirs):
+            if 'aflow.in' in listdir(directory):
+                thisAFLOW = AFLOW.from_path(directory,self.species)
+                thisStat = thisAFLOW.status()
+
+            else:
+                thisVASP = VASP.from_path(directory,self.species)
+                thisStat = thisVASP.status()
+            if thisStat == 'errors' or thisStat == 'running':
+                msg.info("Directory {} is {} ".format(directory, thisStat))
+                
+            with open(thisStat+'.status','a') as f:
+                f.write(directory.split('/')[-1] + '  ')
+#            stat[thisStat].append(directory.split('/')[-1])
+#            msg.info("Status is {} ".format(thisStat))
+#        msg.info('Done (' + str(len(stat['done'])) + ')')
+#        msg.info(' '.join(stat['done']))
+#        msg.info('Running (' + str(len(stat['running'])) + ')')
+#        msg.info(' '.join(stat['running']))
+#        msg.info('Not Started (' + str(len(stat['not started'])) + ')')
+#        msg.info(' '.join(stat['not started']))
+#        msg.info('Not Setup (' + str(len(stat['not setup'])) + ')')
+#        msg.info(' '.join(stat['not setup']))
+#        msg.info('Killed before done (' + str(len(stat['killed before done'])) + ')    (last write was > 1 hr ago) ')
+#        msg.info(' '.join(stat['killed before done']))
+#        msg.info('Warnings (' + str(len(stat['warning'])) + ')')
+#        msg.info(' '.join(stat['warning']))
+#        msg.info('Not sure (' + str(len(stat['idk'])) + ')  (Found finish tags but couldn''t find final energy.  It''s probably in the process of finishing.)')
+#        msg.info(' '.join(stat['idk']))
+#        msg.info('Unconverged (' + str(len(stat['unconverged'])) + ')')
+#        msg.info(' '.join(stat['unconverged']))
+#        msg.info('SGRCON error (' + str(len(stat['sgrcon'])) + ')')
+#        msg.info(' '.join(stat['sgrcon']))
+#        msg.info('Unknown error (' + str(len(stat['error'])) + ')')
+#        msg.info(' '.join(stat['error']))
 
     def gatherResults(self,file=None, folder = None):
         from os import path
@@ -270,7 +284,7 @@ class Controller(object):
         from aBuild.database.dataset import dataset
         from numpy.linalg import norm
         from numpy import average,array
-
+        
         dataSet = dataset(datafile,self.species,lFormat = 'mlp')
         predictSet = dataset(predictFile,self.species,lFormat = 'mlp')
 

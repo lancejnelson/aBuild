@@ -1,6 +1,6 @@
 from os import path
 from aBuild import msg
-from aBuild.utility import fileinDir
+
 import os
 import ase
 
@@ -181,28 +181,39 @@ class Crystal(object):
                               we don't whether we have all of the atom types for the system.
     """
 
-    def __init__(self,crystalSpecs, systemSpecies,crystalSpecies = None, lFormat = 'mtpselect'):
+    def __init__(self,crystalSpecs, lFormat = 'mtpselect'):
         # The system species needs to always be passed in.  The crystals species is optional because we may be able to extract
         # it from input files.
-        self.systemSpecies = systemSpecies
-        self.crystalSpecies = crystalSpecies
-        self.speciesMismatch = False  
-        if isinstance(crystalSpecs,dict):
-            # When the crystal info is given in a dictionary
-            # If a dictionary is passed in, the crystal species
-            # species will be inside that dictionary.  No need to pass
-            # it in separately.
-            self._init_dict(crystalSpecs)
-        elif isinstance(crystalSpecs,str):
-            # When a file path is passed in, we're probably initializing from
-            # a poscar file.  It's possible that the POSCAR file does not
-            # have species information in which case we need to load it manually.
-            print('initializing Crystal object from a file')
-            self.directory = crystalSpecs
-            self._init_file(crystalSpecs)
-        elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
-            print('initializing Crystal object from a list')
-            self._init_lines(crystalSpecs, lFormat)
+#        self.systemSpecies = systemSpecies
+#        self.crystalSpecies = crystalSpecies
+        self.speciesMismatch = False
+
+        required = ["lattice","basis", "atom_types","crystalSpecies","atom_counts","latpar","coordsys","title","results","systemSpecies"]
+        if True in [x not in crystalSpecs.keys() for x in required]:
+            print([x not in crystalSpecs.keys() for x in required])
+            msg.fatal("Not enough information to initialize the Crystal object")
+        for spec in required:
+            setattr(self,spec,crystalSpecs[spec])
+        self.nAtoms = sum(self.atom_counts)
+        self.nTypes = len(self.atom_counts)
+        
+        
+#LJN        if isinstance(crystalSpecs,dict):
+#LJN            # When the crystal info is given in a dictionary
+#LJN            # If a dictionary is passed in, the crystal species
+#LJN            # species will be inside that dictionary.  No need to pass
+#LJN            # it in separately.
+#LJN            self._init_dict(crystalSpecs)
+#LJN        elif isinstance(crystalSpecs,str):
+#LJN            # When a file path is passed in, we're probably initializing from
+#LJN            # a poscar file.  It's possible that the POSCAR file does not
+#LJN            # have species information in which case we need to load it manually.
+#LJN            #print('initializing Crystal object from a file')
+#LJN            self.directory = crystalSpecs
+#LJN            self._init_file()
+#LJN        elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
+#LJN            print('initializing Crystal object from a list')
+#LJN            self._init_lines(crystalSpecs, lFormat)
         
         if self.nAtoms != len(self.basis):
             msg.fatal("We have a problem")
@@ -215,6 +226,7 @@ class Crystal(object):
             self.set_latpar()
         #self.validateCrystal()
 
+        
     #  Sometimes a crystal object will be instantiated and the number of atom types is not consistent with
     # the order of the system being studied. For example, maybe you are studying a ternary system, but some 
     # of the configurations in your training set happened to be binary configurations. (Happens more often at higher order)
@@ -223,7 +235,7 @@ class Crystal(object):
     # will *always* be equal to the order of the system. No exceptions!
     def _add_zeros(self):
         if len(self.systemSpecies) == self.nTypes:
-            msg.info("No need to add zeros to the atom_types list, the number of types matches the species list")
+            #msg.info("No need to add zeros to the atom_types list, the number of types matches the species list")
             return
         elif any(x is None for x in [self.systemSpecies, self.crystalSpecies]):
             self.speciesMismatch = True
@@ -240,7 +252,8 @@ class Crystal(object):
         # but it just so happens that the number of species in this crystal does not match
         # the number of species in the system being studied.  In this case, we need to specify which
         # atomic system species are missing from this particular crystal.  We do this by augmenting zeros
-        # to atom_counts at the appropriate location.  
+        # to atom_counts at the appropriate location.
+        print(self.crystalSpecies)
         if len(self.systemSpecies) != len(self.crystalSpecies):
             from numpy import insert
             lacking = list(set(self.systemSpecies) - set(self.crystalSpecies))
@@ -264,24 +277,39 @@ class Crystal(object):
             self.basis[ibv] =  bv + disp
         self.coordsys = 'C'
         
+    @property
+    def filename(self):
+        from glob import glob
+        files = sorted(glob(path.join(self.directory, 'POSCAR') + '*') )
+        if files != []:
+            return files[-1].split()[-1]
+        else:
+            return None
 
+    @staticmethod
+    def from_path(filepath,systemSpecies):
+        #if self.filename is None:
+        #    msg.fatal("Not sure about the format of the file you want me to read")
+        #filepath = path.join(self.directory,self.filename)
 
-    def _init_file(self,filepath):
-
-        
+        if not path.isfile(filepath):
+            return None
         if 'poscar' in filepath.lower():
-            self.from_poscar(filepath)
+            Crystal.from_poscar(filepath,systemSpecies)
         elif 'input.in' in filepath.lower():
             self.from_lammpsin(filepath)
         else:
             msg.fatal("Not sure about the format of the file you want me to read")
 
-            
-    def _init_lines(self,lines,linesFormat):
+    @staticmethod
+    def from_lines(lines,species,linesFormat):
         if linesFormat == 'mlp':
-            self.fromMLP(lines)
+            return Crystal.fromMLP(lines,species)
 
-    def _init_dict(self,crystalDict):
+    @staticmethod
+    def from_dictionary(crystalDict):
+        required = ["lattice","basis", "atom_types","crystalSpecies","atom_counts","latpar","coordsys","title","results","systemSpecies"]
+
         necessary = ['lattice','basis','atom_counts','coordsys','species']
 
         if not all([x in crystalDict for x in necessary]):
@@ -763,50 +791,59 @@ class Crystal(object):
         if sorted(self.crystalSpecies,reverse = True) != self.crystalSpecies:
             msg.fatal("Your species are not in reverse alphabetical order... OK?")
         self.latpar = data.vegardsVolume(self.crystalSpecies,self.atom_counts,self.volume)
-        
-    def from_poscar(self,filepath):
+
+    @staticmethod
+    def from_poscar(filepath,systemSpecies):
         """Returns an initialized Lattice object using the contents of the
         POSCAR file at the specified filepath.
 
         :arg strN: an optional structure number. If the label in the POSCAR doesn't
           already include the strN, it will be added to the title.
         """
-        
+        crystalDict = {}
         from aBuild.calculators.vasp import POSCAR
-        lines = POSCAR(filepath)
+        lines = POSCAR.from_path(filepath)
         from numpy import array
         #First get hold of the compulsory lattice information for the class
  #       try:
-        self.lattice = array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
-        self.basis = array([list(map(float, b.strip().split()[:3])) for b in lines.Bv])
+        crystalDict["lattice"] =  array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
+        crystalDict["basis"] = array([list(map(float, b.strip().split()[:3])) for b in lines.Bv])
         if lines.species is not None:
-            print("Found species information from POSCAR")
-            if self.crystalSpecies is None:
-                print("No species information passed in, setting species info from POSCAR")
-                # No species passed in, found species in POSCAR, let's use it.
-                self.crystalSpecies = lines.species
-            elif self.crystalSpecies != lines.species:
-                # Why don't they agree?
-                msg.fatal('It appears that the species in the POTCAR file does not agree with the POSCAR file')
+            # Found species inside POSCAR file
+            crystalDict["crystalSpecies"] = lines.species
         else:
-            print("Cannot find species information from POSCAR")
-            if self.crystalSpecies is None:
-                print("No species information was passed in.  Setting crystalSpecies to systemSpecies")
-                self.crystalSpecies = self.systemSpecies
-        self.atom_counts = array(list(map(int, lines.atom_counts.split() )  ))
-        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
-        self.atom_types = []
+            # Assume that the passed in species apply to this crystal
+            crystalDict["crystalSpecies"] = systemSpecies
+#LJN#            print("Found species information from POSCAR")
+#LJN            if self.crystalSpecies is None:
+#LJN#                print("No species information passed in, setting species info from POSCAR")
+#LJN                # No species passed in, found species in POSCAR, let's use it.
+#LJN                self.crystalSpecies = lines.species
+#LJN            elif self.crystalSpecies != lines.species:
+#LJN                # Why don't they agree?
+#LJN                msg.fatal('It appears that the species in the POTCAR file does not agree with the POSCAR file')
+#LJN        else:
+#LJN            print("Cannot find species information from POSCAR")
+#LJN            if self.crystalSpecies is None:
+#LJN                print("No species information was passed in.  Setting crystalSpecies to systemSpecies")
+#LJN                self.crystalSpecies = self.systemSpecies
+        crystalDict["atom_counts"] = array(list(map(int, lines.atom_counts.split() )  ))
+        typesList = [[idx] * aCount for idx,aCount in enumerate(crystalDict["atom_counts"])]
+        atom_types = []
         for i in typesList:
-            self.atom_types += i
-            
-        self.latpar = float(lines.latpar.split()[0])
-        self.coordsys = lines.coordsys
-
-        self.title = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
-        self.nAtoms = sum(self.atom_counts)
-        self.nTypes = len(self.atom_counts)
- 
+            atom_types += i
+        crystalDict["atom_types"] = atom_types
+        crystalDict["latpar"] = float(lines.latpar.split()[0])
+        crystalDict["coordsys"] = lines.coordsys
+        crystalDict["title"] = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
+        crystalDict["systemSpecies"] = systemSpecies
+#LJN        self.nAtoms = sum(self.atom_counts)
+#LJN        self.nTypes = len(self.atom_counts)
+        crystalDict["results"] = None
+        print('about to initilize')
+        return Crystal(crystalDict)
 #        except:
+
 #            raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
 
     @property
@@ -852,26 +889,29 @@ class Crystal(object):
                     self.atom_counts[int(elem)-1] += 1
         self.coordsys = 'D'
         self.title = path.split(filepath)[0].split('/')[-1] + lines[1].split('\n')[0]
-        
-    def fromMLP(self,lines):
+
+    @staticmethod
+    def fromMLP(lines,species):
         from numpy import array
         import os
         from aBuild.calculators.vasp import VASP
         nAtoms = int(lines[2].split()[0])
-        latDict = {}
-        self.results = {}
-        self.lattice = array([list(map(float,x.split())) for x in lines[4:7]])
-        self.basis = array([list(map(float,x.split()[2:5])) for x in lines[8:8 + nAtoms]])
-        self.nAtoms = len(self.basis)
-        self.coordsys = 'C'
-        self.atom_types = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
-        self.crystalSpecies = [self.systemSpecies[x] for x in list(set(self.atom_types))]
+
+        results = {}
+        crystalDict = {}
+        crystalDict["systemSpecies"] = species
+        crystalDict["lattice"] = array([list(map(float,x.split())) for x in lines[4:7]])
+        crystalDict["basis"] = array([list(map(float,x.split()[2:5])) for x in lines[8:8 + nAtoms]])
+        #LJNself.nAtoms = len(self.basis)
+        crystalDict["coordsys"] = 'C'
+        crystalDict["atom_types"] = [int(x.split()[1]) for x in lines[8:8 + nAtoms]]
+        crystalDict["crystalSpecies"] = [species[x] for x in list(set(crystalDict["atom_types"]))]
         if len(lines[8]) > 5:
-            self.results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
+            results["forces"] = array([list(map(float,x.split()[5:8])) for x in lines[8:8 + nAtoms]])
         else:
-            self.results["forces"] = None
-        self.atom_counts = array([ self.atom_types.count(x) for x in set(self.atom_types)]) #range(max(atoms)+1)
-        self.nTypes = len(self.atom_counts)
+            results["forces"] = None
+        crystalDict["atom_counts"] = array([ crystalDict["atom_types"].count(x) for x in set(crystalDict["atom_types"])]) #range(max(atoms)+1)
+        #LJNself.nTypes = len(self.atom_counts)
         # THe add_zeros function is here in case you run into a config with few atom types than the
         # system being studied. Like running into a pure config for a binary system.  Or a binary config
         # when studying a ternary system. Commented out because the add_zeros function gets called in
@@ -879,11 +919,11 @@ class Crystal(object):
         #self.species = [self.systemSpecies[x] for x in list(set(self.atom_types))]
         #self._add_zeros(self.systemSpecies,self.species)
         titleindex = ['conf_id' in x for x in lines].index(True)
-        self.title = ' '.join(lines[titleindex].split()[2:])
+        crystalDict["title"] = ' '.join(lines[titleindex].split()[2:])
         if any(['Energy' in x for x in lines] ):
             energyindex = ['Energy' in x for x in lines].index(True)
             
-            self.results["energyF"] = float(lines[energyindex + 1].strip().split()[0])
+            results["energyF"] = float(lines[energyindex + 1].strip().split()[0])
 #            root = os.getcwd()
 #            pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
 #            puresDict = {}
@@ -894,16 +934,19 @@ class Crystal(object):
 #                puresDict[spec] = pures[ispec].crystal.results["energypatom"]
 #            self.results["fEnth"] = self.results["energyF"]/self.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.concentrations[i] for i in range(self.nTypes)])
         else:
-            self.results["energyF"] = None
-        if sum(self.atom_counts) != nAtoms:
-            msg.fatal('atomCounts didn\'t match up with total number of atoms')
+            results["energyF"] = None
+#        if sum(self.atom_counts) != nAtoms:
+#            msg.fatal('atomCounts didn\'t match up with total number of atoms')
 #        self.set_latpar()
-        self.latpar = 1.0  # MLP files are formatted with no lattice parameter.  It's
+        crystalDict["latpar"] = 1.0  # MLP files are formatted with no lattice parameter.  It's
                            # already built into the lattice vectors.
 #        self.lattice = self.lattice / self.latpar  # I think I did this to ensure that the lattice
                                                     # vectors didn't change but I know that the lattice
                                                     # parameter is just 1.0 for MLP formatting.
-        
+
+        crystalDict["results"] = results
+        return Crystal(crystalDict)
+    
     @staticmethod  # Needs fixed!!!
     def fromEnum(enumDict,structNum):
 

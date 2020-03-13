@@ -1,6 +1,8 @@
 
 from contextlib import contextmanager
-
+from subprocess import Popen,PIPE,run,check_output,STDOUT
+from os import waitpid,path
+import mmap
 
 @contextmanager
 def chdir(target):
@@ -19,29 +21,85 @@ def chdir(target):
     finally:
         chdir(current)
 
-def grep(filename,tag):
+def head(filename,lineNum,postProcess):
+    command = "head -{} {} {}".format(lineNum,filename,postProcess)
+    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
+    result = child.communicate()[0]
+    #    waitpid(child.pid, 0)
+    print(child.stdout.decode('utf-8'))
+    return child.stdout
 
-    from os import waitpid
-    from subprocess import Popen,PIPE
+def tail(filename,lineNum,postProcess):
+    command = "tail -{} {} {}".format(lineNum,filename,postProcess)
+    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
+    result = child.communicate()[0]
+    #    waitpid(child.pid, 0)
+    print(child.stdout.decode('utf-8'))
+    return child.stdout
 
-    if 'xz' in filename:
-        import lzma
-        with lzma.open(filename,'rt') as f:
-            lines = f.readlines()
-    else:
-        with open(filename,'r') as f:
-            lines = f.readlines()
-    matchedlines = []
-    for line in lines:
-        if tag in line:
-            matchedlines.append(line)
-    return matchedlines
-#    command = "grep {} {}".format(tag,file)
-#    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
-#    result = child.communicate()[0]
-#    #    waitpid(child.pid, 0)
-#    print(child.stdout.decode('utf-8'))
-#    return child.stdout
+def cat(filename,postProcess):
+    command = "cat {} {}".format(filename,postProcess)
+    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
+    result = child.communicate()[0]
+    #    waitpid(child.pid, 0)
+    print(result.stdout.decode('utf-8').split('\n')[:-1])
+    return result.stdout.decode('utf-8').split('\n')[:-1]
+
+def rgrep(filename,tag):
+    if not path.isfile(filename):
+        return None
+    lines = []
+    with open(filename,'r') as f:
+        m = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+        i = m.rfind(str.encode(tag))
+        print(i, 'i')
+        if i > 0:
+            m.seek(i)
+            return m.readline()
+        
+def grep(filename,tag,options='',postprocess = ''):
+
+#    from os import waitpid
+#    from subprocess import Popen,PIPE
+#
+#    if 'xz' in filename:
+#        import lzma
+#        with lzma.open(filename,'rt') as f:
+#            lines = f.readlines()
+#    else:
+#        with open(filename,'r') as f:
+#            lines = f.readlines()
+#    matchedlines = []
+#    for line in lines:
+#        if tag in line:
+#            matchedlines.append(line)
+#    return matchedlines
+    if not path.isfile(filename):
+        return None
+    lines = []
+    with open(filename,'r') as f:
+        m = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+        i = m.find(str.encode(tag))
+        while i > 0:
+            m.seek(i)
+            lines.append(m.readline())
+            i = m.find(tag)
+            
+#LJN    if 'xz' in filename:
+#LJN        command = 'xzgrep {} "{}" {} {}'.format(options, tag,filename,postprocess)
+#LJN    else:
+#LJN        command = 'grep {} "{}" {} {}'.format(options, tag,filename,postprocess)
+#LJN#    print('greping file {} for tag {} with command: {}'.format(filename,tag,command))
+#LJN    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
+#LJN    result = child.communicate()[0]
+#    print('Result',result.decode('utf-8').split('\n')[:-1])
+    return result.decode('utf-8').split('\n')[:-1]#child.stdout
+    #if len(result.decode('utf-8').split('\n')) == 1 and result.decode('utf-8').split('\n')[0] == '':
+    #    return []
+    #elif 
+    #else:
+    #    waitpid(child.pid, 0)
+    #    return result.decode('utf-8').split('\n')[:-1]#child.stdout
 
 def _get_reporoot():
     """Returns the absolute path to the repo root directory on the current
@@ -180,12 +238,12 @@ def _chop_all(epsilon, i):
 
 
     
-def fileinDir(searchfile,directory, or_close=False,returnFiles = True):
-    from os import listdir
-    if not or_close:
-        return True in [searchfile == x for x  in listdir(directory)]
-    else:
-        if returnFiles:
-            return [x for x in listdir(directory) if searchfile in x]
-        else:
-            return True in [searchfile in x for x  in listdir(directory)]
+#def fileinDir(searchfile,directory, or_close=False,returnFiles = True):
+#    from os import listdir
+#    if not or_close:
+#        return True in [searchfile == x for x  in listdir(directory)]
+#    else:
+#        if returnFiles:
+#            return [x for x in listdir(directory) if searchfile in x]
+#        else:
+#            return True in [searchfile in x for x  in listdir(directory)]

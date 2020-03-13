@@ -10,15 +10,24 @@ config = sys.modules["config"]
 
 class AFLOW:
 
-    def __init__(self, specs,systemSpecies= None, directory=None):
-        self.species = systemSpecies
-        if isinstance(specs,dict):
-            self._init_dict(specs)
-        elif isinstance(specs,str):
-            if self.species == None:
-                msg.error("You can't initialize an AFLOW object using a path without also specifying the system species")
-            self.directory = specs
-            self._init_path()
+    def __init__(self, INCAR,KPOINTS,POTCAR,crystal,aflowin,directory,autobuild = {"incar":True, "kpoints":True,"potcar":True}):
+        self.INCAR = INCAR
+        self.KPOINTS = KPOINTS
+        self.POTCAR = POTCAR
+        self.crystal = crystal
+        self.aflowin = aflowin
+        self.directory = directory
+        self.incar_auto_build = autobuild["incar"]
+        self.kpoints_auto_build = autobuild["kpoints"]
+        self.potcar_auto_build = autobuild["potcar"]
+#        self.species = systemSpecies
+#        if isinstance(specs,dict):
+#            self._init_dict(specs)
+#        elif isinstance(specs,str):
+#            if self.species == None:
+#                msg.error("You can't initialize an AFLOW object using a path without also specifying the system species")
+#            self.directory = specs
+#            self._init_path()
                
 
     # If you initialize the AFLOW object with a dictionary, the dictionary *must* have the following entries:
@@ -29,38 +38,44 @@ class AFLOW:
     #               system species
     #  This most often happens when you are initialzing off of a yaml file and you augment the dictionary from the yaml
     # with the crystal and the species information.
-            
-    def _init_dict(self,specs):
+    @staticmethod
+    def from_dictionary(specsDict):
        
-        self.aflowin = specs['aflowin']
-        if specs['incar']['build'] != 'auto':
-            self.INCAR = INCAR(specs["incar"])
-            self.incar_auto_build = False
+        aflowin = specsDict['aflowin']
+        auto_build = {}
+        if specsDict['incar']['build'] != 'auto':
+            incarobj = INCAR(specsDict["incar"])
+            auto_build["incar"] = False
         else:
-            self.INCAR = specs["incar"]
-            self.incar_auto_build = True
-        if specs['potcars']['build'] != 'auto':
-            self.POTCAR = POTCAR(specs["potcars"])
-            self.potcar_auto_build = False
+            incarobj = specsDict["incar"]
+            auto_build["incar"] = True
+        if specsDict['potcars']['build'] != 'auto':
+            potcarobj = POTCAR(specsDict["potcars"])
+            auto_build["potcar"] = False
         else:
-            self.POTCAR = specs["potcars"]
-            self.potcar_auto_build = True
+            potcarobj = specsDict["potcars"]
+            auto_build["potcar"] = True
             
-        if specs['kpoints']['build'] != 'auto':
-            self.KPOINTS = KPOINTS(specs["kpoints"])
-            self.kpoints_auto_build = False
+        if specsDict['kpoints']['build'] != 'auto':
+            kpointsobj = KPOINTS(specsDict["kpoints"])
+            auto_build["kpoints"] = False
         else:
-            self.KPOINTS = specs["kpoints"]
-            self.kpoints_auto_build = True
-        self.crystal = specs["crystal"]
-        self.species = specs["species"]
+            kpointsobj = specsDict["kpoints"]
+            auto_build["kpoints"] = True
+
+            
+        crystal = specsDict["crystal"]
+        return AFLOW(incarobj,kpointsobj,potcarobj,crystal,aflowin,autobuild = auto_build)
+#        species = specsDict["species"]
 
     # If you initialize your AFLOW object with the path to the calculation, you must also specify the system's species
     #  This is necessary because often times the POSCAR/POTCAR files will not tell the whole story about what system you are
     # studying.  For example, the sytem may be a ternary, but this particular crystal may only have 2 of the 3 atom type.  If
     # the system species is not specified we have no way of knowing that we are missing an atomt type.
     # This most often happens when you are wanting to suck out the results from a calculation that has finished.
-    def _init_path(self):
+
+    @staticmethod
+    def from_path(directory,species):
         from aBuild.database.crystal import Crystal
         from aBuild.calculators.vasp import POTCAR,KPOINTS
 
@@ -68,9 +83,12 @@ class AFLOW:
         # In this case, we want to read all the relevant information from the aflow.in file.
         from os import path
 
-        self.POTCAR = POTCAR(self.directory)
-        self.KPOINTS = KPOINTS(self.directory)
-        self.crystal = Crystal(self.directory,self.species,crystalSpecies = self.POTCAR.species)
+        potcar = POTCAR.from_path(path.join(directory,'POTCAR.static.xz'))
+        kpoints = KPOINTS.from_path(directory)
+        incar = INCAR.from_path(path.join(directory,'INCAR.static.xz'))
+        crystal = Crystal.from_path(path.join(directory,'POSCAR.static.xz'),species)
+        
+        return AFLOW(incar,kpoints,potcar,crystal,None,directory)
         
         
 
@@ -91,8 +109,8 @@ class AFLOW:
             currentlines = f.readlines()
         for line in currentlines:
 #            found = False
-            
             needsRemoved = (True in [x in line for x in self.aflowin['remove']]) or (not self.kpoints_auto_build and '[VASP_KPOINTS_FILE]' in line)
+            
             if 'add' in self.aflowin:
                 needsAdded = True in [x in line for x in self.aflowin['add']]
             else:
@@ -134,22 +152,115 @@ class AFLOW:
         with open('aflow.in','w') as f:
             f.writelines(lines)
 
+
+
+    def can_extract(self):
+        import lzma
+
+        outcar = path.join(self.directory,'OUTCAR.static.xz')
+        if not path.isfile(outcar):
+            return False
+        with lzma.open(outcar,'rt') as f:
+            if 'free  energy' in f.read():
+                return True
+            else:
+                return False
+
+    def is_executing(self):
+
+        outcar = path.join(self.directory, "OUTCAR")
+        outcars = path.isfile(outcar)
+        busy = not self.can_extract()
+        return outcars and busy
+
+    def is_setup(self):
+        aflow = path.join(self.directory, 'aflow.in')
+        return path.isfile(aflow)
+
+    def error(self,searchfile,tag):
+        vaspout = path.join(self.directory, searchFile)
+        if rgrep(vaspout,tag) is not []:
+            return True
+        else:
+            return False
+
+        
+    def has_errors(self):
+        from glob import glob
+        files = sorted(glob(path.join(self.directory, 'aflow.error') + '*') )
+        return files is []
+
+    def is_converged(self):
+        from aBuild.utility import rgrep
+        import lzma
+        oszicar = path.join(self.directory, 'OSZICAR.static.xz')
+        electronicIt = 0
+        with lzma.open(oszicar,'rt') as f:
+            for line in f.readlines():
+                if 'DAV:' in line:
+                    electronicIt = int(line.split()[1])
+
+        if electronicIt < self.INCAR.tags["nelm"]:
+            return True
+        else:
+            return False
+        
     def status(self):
-        return 'done'
+        from os import path
+        from time import time
+        from aBuild.utility import grep
+        import os
+        fTagStatic = 'aborting loop because EDIFF is reached'
+        fTagRelax = ' writing wavefunctions'
+        ctime = time()
+        #print('checking directory {}'.format(self.directory))
+
+
+        if self.can_extract():
+            if self.is_converged():
+                return 'done'
+            else:
+                return 'unconverged'
+        elif self.is_executing():
+            return 'running'
+        elif self.has_errors():
+            return 'errors'
+        elif self.is_setup():
+            return 'not_started'
 
     def buildFolder(self):
         self.crystal.write('POSCAR.orig',keepZeros = True)
-#        self.check_atom_counts_zero()
         self.crystal.write('POSCAR',keepZeros = False)
-        self.KPOINTS.rGP = True
-        success = self.KPOINTS.writeKPOINTS()
-        print(success, 'succes?')
-        if not success:
-            msg.info("KPOINTS build failed, reverting to MP grid")
-            self.kpoints_auto_build = True
         self.writeaflowfromposcar('POSCAR')
-        self.modifyaflowin()
-        
+        if os.path.getsize('aflow.in') < 10:
+            return False
+        if not self.kpoints_auto_build:
+            # Now build the KPOINTs file
+            self.KPOINTS.rGP = True
+            success = self.KPOINTS.writeKPOINTS()
+            print(success, 'success?')
+            if not success:
+                currentMethod = self.KPOINTS.specs["method"]
+                if currentMethod == 'autogr':
+                    self.KPOINTS.specs["method"] = 'mueller'
+                    self.KPOINTS.specs["mindistance"] = self.KPOINTS.specs["rmin"]
+                    self.KPOINTS.specs["includegamma"] = "True"
+                    retrySuccess = self.KPOINTS.writeKPOINTS()
+                    self.KPOINTS.specs["method"] = currentMethod
+                    if not retrySuccess:
+                        msg.info("KPOINTS build failed, reverting to MP grid")
+                        self.kpoints_auto_build = True
+                else:
+                    self.KPOINTS.specs["method"] = 'autogr'
+                    self.KPOINTS.specs["rmin"] = self.KPOINTS.specs["mindistance"]
+                    self.KPOINTS.specs["eps"] = '1e-12'
+                    retrySuccess = self.KPOINTS.writeKPOINTS()
+                    self.KPOINTS.specs["method"] = currentMethod
+                    if not retrySuccess:
+                        msg.info("KPOINTS build failed, reverting to MP grid")
+                        self.kpoints_auto_build = True
+            self.modifyaflowin()
+            return True
 
     def check_atom_counts_zero(self):
         from numpy import array,any

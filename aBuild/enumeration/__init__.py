@@ -169,7 +169,7 @@ class Enumerate:
 
         knaryDict = {2:" Binary", 3: " Ternary", 4: " Quaternary", 5: "Quinary"}
         settings = {}
-        settings["title"] = self.lattice.lattice_name  + knaryDict[self.knary] 
+        settings["title"] = self.lattice.lattice_name  + ' ' + knaryDict[self.knary] 
         settings["template"] = "struct_enum.in"
         settings["eps"] = self.eps
         settings["size_low"] = self.sizeRange[0]
