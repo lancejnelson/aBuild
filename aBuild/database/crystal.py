@@ -94,7 +94,7 @@ class Lattice:
         elif isinstance(specs["lattice"], str):
             self._init_string(specs["lattice"])
 
-        
+
 
     def _init_dict(self,enumdict):
         import numpy as np
@@ -113,7 +113,7 @@ class Lattice:
         self.coordsys = enumdict["coordsys"]
         self.lattice_name = enumdict["name"]
         self.nBasis = len(self.basis)
-        
+
     def _init_string(self,string):
         lVLookupDict = {'sc':[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]] ,'fcc': [[0.5,0.5,0.0],[0.5,0.0,0.5],[0.0,0.5,0.5]],'bcc': [[-0.5,0.5,0.5],[0.5,-0.5,0.5],[0.5,0.5,-0.5]],'hcp': [[1,0,0],[.5, 0.866025403784439, 0],[0, 0, 1.6329931618554521]]}
         bVLookupDict = {'sc': [[0.0,0.0,0.0]],'fcc': [[0.0,0.0,0.0]],'bcc': [[0.0,0.0,0.0]],'hcp': [[0,0,0],[0.5,0.28867513459,0.81649658093]]}
@@ -124,8 +124,8 @@ class Lattice:
         self.coordsys = 'D'
         self.lattice_name = string
         self.nBasis = len(self.basis)
-        
-        
+
+
 
     @property
     def Bv_cartesian(self):
@@ -136,7 +136,7 @@ class Lattice:
             return self.Bv
 
 
-        
+
     @property
     def Bv_direct(self):
         from numpy import sum as nsum, array
@@ -145,7 +145,7 @@ class Lattice:
 
         from numpy.linalg import inv
         from numpy import transpose, array, equal
-        inv_lattice = inv(self.Lv.transpose())        
+        inv_lattice = inv(self.Lv.transpose())
         d_space_vector = [ list(dot(inv_lattice, array(b))) for b in self.Bv ]
 
         output = []
@@ -155,20 +155,20 @@ class Lattice:
 
         return output
 
-    
+
     def Lv_strings(self,nolatpar = False):
         if nolatpar:
             return [' '.join(list(map(str,x))) for x in self.Lv * self.latpar]
 
         else:
             return [' '.join(list(map(str,x))) for x in self.Lv]
-            
-        
+
+
 class Crystal(object):
     """A crystal object is a lattice + a basis, including the types of atoms in the unit cell.
-       
+
     Args:
-        crystalSpecs (dict or str or list):  Either a dictionary containing all of the 
+        crystalSpecs (dict or str or list):  Either a dictionary containing all of the
                               necessary settings or a path to a folder that
                               contains all of the files needed.  May also be a list of strings from
                               a file read.  In this case, we will parse the lines one-by-one and read in the
@@ -181,56 +181,33 @@ class Crystal(object):
                               we don't whether we have all of the atom types for the system.
     """
 
-    def __init__(self,crystalSpecs, lFormat = 'mtpselect'):
+    def __init__(self,crystalSpecs):
         # The system species needs to always be passed in.  The crystals species is optional because we may be able to extract
         # it from input files.
-#        self.systemSpecies = systemSpecies
-#        self.crystalSpecies = crystalSpecies
-        self.speciesMismatch = False
 
         required = ["lattice","basis", "atom_types","crystalSpecies","atom_counts","latpar","coordsys","title","results","systemSpecies"]
         if True in [x not in crystalSpecs.keys() for x in required]:
-            print([x not in crystalSpecs.keys() for x in required])
             msg.fatal("Not enough information to initialize the Crystal object")
         for spec in required:
             setattr(self,spec,crystalSpecs[spec])
         self.nAtoms = sum(self.atom_counts)
         self.nTypes = len(self.atom_counts)
-        
-        
-#LJN        if isinstance(crystalSpecs,dict):
-#LJN            # When the crystal info is given in a dictionary
-#LJN            # If a dictionary is passed in, the crystal species
-#LJN            # species will be inside that dictionary.  No need to pass
-#LJN            # it in separately.
-#LJN            self._init_dict(crystalSpecs)
-#LJN        elif isinstance(crystalSpecs,str):
-#LJN            # When a file path is passed in, we're probably initializing from
-#LJN            # a poscar file.  It's possible that the POSCAR file does not
-#LJN            # have species information in which case we need to load it manually.
-#LJN            #print('initializing Crystal object from a file')
-#LJN            self.directory = crystalSpecs
-#LJN            self._init_file()
-#LJN        elif isinstance(crystalSpecs,list): # Like when you read a "new_training.cfg" or a "structures.in"
-#LJN            print('initializing Crystal object from a list')
-#LJN            self._init_lines(crystalSpecs, lFormat)
-        
-        if self.nAtoms != len(self.basis):
+
+        if self.basis is not None and self.nAtoms != len(self.basis):
             msg.fatal("We have a problem")
 
         #  Let's check to see if we have a disagreement between the system species and
         # the crystal species
         self._add_zeros()
 
-        if self.latpar is None and self.crystalSpecies is not None:
+        if self.latpar is None and None not in [self.crystalSpecies,self.lattice]:
             self.set_latpar()
-        #self.validateCrystal()
 
-        
+
     #  Sometimes a crystal object will be instantiated and the number of atom types is not consistent with
-    # the order of the system being studied. For example, maybe you are studying a ternary system, but some 
+    # the order of the system being studied. For example, maybe you are studying a ternary system, but some
     # of the configurations in your training set happened to be binary configurations. (Happens more often at higher order)
-    #  In these cases, we need to add zeros to the atom_counts variable to clearly indicate which species are 
+    #  In these cases, we need to add zeros to the atom_counts variable to clearly indicate which species are
     # present and which are not.  In other words, our standard for the Crystal object is that the number of species
     # will *always* be equal to the order of the system. No exceptions!
     def _add_zeros(self):
@@ -241,7 +218,7 @@ class Crystal(object):
             self.speciesMismatch = True
             msg.info("I need to know the species list for the system and this crystal to proceed adding zeros in ")
             return
-        
+
         if len(self.crystalSpecies) != self.nTypes:
             print(self.crystalSpecies, self.nTypes)
             msg.fatal("The number of species that was read in (POTCAR) does not agree with atom_counts (POSCAR)")
@@ -253,7 +230,6 @@ class Crystal(object):
         # the number of species in the system being studied.  In this case, we need to specify which
         # atomic system species are missing from this particular crystal.  We do this by augmenting zeros
         # to atom_counts at the appropriate location.
-        print(self.crystalSpecies)
         if len(self.systemSpecies) != len(self.crystalSpecies):
             from numpy import insert
             lacking = list(set(self.systemSpecies) - set(self.crystalSpecies))
@@ -271,20 +247,12 @@ class Crystal(object):
         from numpy.random import randn
         msg.warn("Warning:  You are about to move basis atoms around")
 
-        
+
         for ibv,bv in enumerate(self.Bv_cartesian):
             disp = 0.05 * randn(3)
             self.basis[ibv] =  bv + disp
         self.coordsys = 'C'
-        
-    @property
-    def filename(self):
-        from glob import glob
-        files = sorted(glob(path.join(self.directory, 'POSCAR') + '*') )
-        if files != []:
-            return files[-1].split()[-1]
-        else:
-            return None
+
 
     @staticmethod
     def from_path(filepath,systemSpecies):
@@ -293,9 +261,10 @@ class Crystal(object):
         #filepath = path.join(self.directory,self.filename)
 
         if not path.isfile(filepath):
+            print('POSCAR not found', filepath)
             return None
         if 'poscar' in filepath.lower():
-            Crystal.from_poscar(filepath,systemSpecies)
+            return Crystal.from_poscar(filepath,systemSpecies)
         elif 'input.in' in filepath.lower():
             self.from_lammpsin(filepath)
         else:
@@ -306,43 +275,43 @@ class Crystal(object):
         if linesFormat == 'mlp':
             return Crystal.fromMLP(lines,species)
 
-    @staticmethod
-    def from_dictionary(crystalDict):
-        required = ["lattice","basis", "atom_types","crystalSpecies","atom_counts","latpar","coordsys","title","results","systemSpecies"]
+#    @staticmethod
+#    def from_dictionary(crystalDict):
+#        required = ["lattice","basis", "atom_types","crystalSpecies","atom_counts","latpar","coordsys","title","results","systemSpecies"]
+#
+#        necessary = ['lattice','basis','atom_counts','coordsys','species']
+#
+#        if not all([x in crystalDict for x in necessary]):
+#            msg.fatal("Some necessary information not set upon initialization of Crystal object")
+#
+#        from numpy import array
+#
+#        self.lattice = crystalDict["lattice"]
+#        self.basis = crystalDict["basis"]
+#        self.atom_counts = crystalDict["atom_counts"]
+#        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
+#        self.atom_types = []
+#        for i in typesList:
+#            self.atom_types += i
+#        self.nAtoms = sum(self.atom_counts)
+#        self.nTypes = len(self.atom_counts)
+#
+#        self.coordsys = crystalDict["coordsys"]
+#        self.crystalSpecies = crystalDict["species"]
+#        if sorted(self.species,reverse = True) != self.species:
+#            msg.fatal("The order of your atomic species is not in reverse alphabetical order... OK?")
+#
+#        if 'title' in crystalDict:
+#            self.title = crystalDict["title"]
+#        else:
+#            self.title = None
+#
+#        if 'latpar' in crystalDict:
+#            self.latpar = crystalDict["latpar"]
+#        else:
+#            self.latpar = None
 
-        necessary = ['lattice','basis','atom_counts','coordsys','species']
 
-        if not all([x in crystalDict for x in necessary]):
-            msg.fatal("Some necessary information not set upon initialization of Crystal object")
-
-        from numpy import array
-
-        self.lattice = crystalDict["lattice"]
-        self.basis = crystalDict["basis"]
-        self.atom_counts = crystalDict["atom_counts"]
-        typesList = [[idx] * aCount for idx,aCount in enumerate(self.atom_counts)]
-        self.atom_types = []
-        for i in typesList:
-            self.atom_types += i
-        self.nAtoms = sum(self.atom_counts)
-        self.nTypes = len(self.atom_counts)
- 
-        self.coordsys = crystalDict["coordsys"]
-        self.crystalSpecies = crystalDict["species"]
-        if sorted(self.species,reverse = True) != self.species:
-            msg.fatal("The order of your atomic species is not in reverse alphabetical order... OK?")
-        
-        if 'title' in crystalDict:
-            self.title = crystalDict["title"]
-        else:
-            self.title = None
-
-        if 'latpar' in crystalDict:
-            self.latpar = crystalDict["latpar"]
-        else:
-            self.latpar = None
-
-                
 
             #        self.directory = directory
 #        if len(self.species) != self.nTypes:
@@ -412,7 +381,7 @@ class Crystal(object):
         # Need to make sure that all of the atoms are inside the first
         # unit cell before we compile list of distances
         self.validateCrystal()
-        
+
         #  Calculate all possible shifts.  These are vectors of integers
         # representing the amount of each lattice vector that we are going
         # to add to each basis atom.  We only do combinations of (-1,0,1) because
@@ -455,7 +424,7 @@ class Crystal(object):
 #    def appMinDist(self):
 #        from aBuild.calculators import data
 #        return data.nnDistance(self.species,self.atom_counts)
-        
+
     @property
     def recip_Lv(self):
         if len(self.lattice) == 0:
@@ -463,7 +432,7 @@ class Crystal(object):
                              " lattice vectors.")
 
         from numpy import array,cross,dot
-        groupings = [[self.lattice[1], self.lattice[2]], [self.lattice[2], self.lattice[0]], 
+        groupings = [[self.lattice[1], self.lattice[2]], [self.lattice[2], self.lattice[0]],
                      [self.lattice[0], self.lattice[1]]]
         crosses = [cross(v[0], v[1]) for v in groupings]
         dots = [dot(self.lattice[i], crosses[i]) for i in [0,1,2]]
@@ -479,7 +448,7 @@ class Crystal(object):
     @property
     def concentrations(self):
         return [self.atom_counts[x]/sum(self.atom_counts) for x in range(self.nTypes)]
-    
+
     @property
     def Bv_cartesian(self):
         from numpy import sum as nsum, array
@@ -511,69 +480,6 @@ class Crystal(object):
 
 
 
-    # Warning: This routing is NOT general.  It is designed to
-    # determine whether alternating (100) planes is possible for the given
-    # crystal structure.  Need to generalize to any direction and any
-    # alternating pattern.
-#    def getAFMPlanes(self,direction):
-#        from numpy import sort,array,where,any
-#        from numpy.linalg import norm
-#
-#        if self.atom_counts[0] < 2:
-#            return []
-#        self.findNeighbors(0.75 * norm(self.latpar * self.lattice[0]+self.latpar * self.lattice[1]+self.latpar * self.lattice[2]) )
-#        # Find all of the A atoms
-#        aAtoms = where(array(self.atom_types) == 0)[0]
-#        # Get position vectors for all of the A atoms,
-#        locationAatoms = [basis[idy] for idx,basis in enumerate(self.neighbors) for idy,y in enumerate(basis) if basis[idy][2] in aAtoms]
-#
-#        eps = 1e-1
-#        # Build a dictionary, one list for every plane of atoms
-#        planesDict = {}
-#
-#        # Sometimes after a relaxation, atoms will have moved slightly off of their ideal
-#        # planes.  So we need to check to see if atoms are close to their planes.
-#        for idx,atom in enumerate(locationAatoms):
-#            if not any(abs(array([x for x in planesDict.keys()]) - atom[0][0]) < eps): #Found new plane
-##                print('new plane found')
-##                print(atom[0][0], 'x  coord')
-##                print(atom, 'full atom to record')
-##            if atom[0][0] not in planesDict:
-#                planesDict[atom[0][0]] = [atom]
-#            else:  #Adding an atom to a plane that I already found
-# #               print('adding atom to previously found plane.')
-#                loc = abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin()
-#                planeAdd = array([x for x in planesDict.keys()])[loc]
-# #               print(list(planesDict.keys()), "planes found thus far")
-# #               print(array([x for x in planesDict.keys()]) - atom[0][0], 'diffs')
-# ##               print(abs(array([x for x in planesDict.keys()]) - atom[0][0]).argmin(), 'location of min')
-# #               print("Placing atom {} in plane {}.".format(atom,planeAdd))
-#                planesDict[planeAdd].append(atom)
-#        planes = sorted(list(planesDict.keys()))
-#  #      print(planes, 'here are the planes')
-#  #      print(planesDict,' planesDict')
-#        nPlanes = len(planes)
-#        planesAtoms = [set([x[2] for x in planesDict[y]]) for y in planes  ]
-#        evenPlanes = set([x for y in range(0,nPlanes,2) for x  in planesAtoms[y] ])
-#        oddPlanes = set([x for y in range(1,nPlanes,2) for x  in planesAtoms[y] ])
-##        print(evenPlanes, 'even planes')
-##        print(oddPlanes, 'odd planes')
-#        check = [x in evenPlanes for x in oddPlanes]
-#        if any(check):
-#            self.AFMPlanes = None
-#           # print(planes, 'here are the planes')
-#           # print(evenPlanes, 'even planes')
-#           # print(oddPlanes, 'odd planes')
-#           # print(planesDict,' planes dict')
-#            return False
-#        else:
-#            self.AFMPlanes = [0 for x in aAtoms]
-#            for i in evenPlanes:
-#                self.AFMPlanes[i] = 2
-#            for i in oddPlanes:
-#                self.AFMPlanes[i] = -2
-#            print(evenPlanes,oddPlanes, self.AFMPlanes,' check AFM results') 
-#            return True
     @property
     def Bv_direct(self):
         from numpy import sum as nsum, array,dot
@@ -581,7 +487,7 @@ class Crystal(object):
             return self.basis
         from numpy.linalg import inv
         from numpy import transpose, array, equal
-        inv_lattice = inv(self.lattice.transpose()*self.latpar)        
+        inv_lattice = inv(self.lattice.transpose()*self.latpar)
         d_space_vector = [ list(dot(inv_lattice, array(b))) for b in self.basis ]
 
         epsilon = 1e-4
@@ -609,13 +515,13 @@ class Crystal(object):
     @property
     def lattice_lines(self):
         """Return \n joined lattice vector text lines."""
-        
+
         return '\n'.join( [' '.join(map(str,x)) for x in self.lattice]) #'\n'.join(list(self.lattice))
 
     @property
     def lattice_lines_nolatpar(self):
         """Return \n joined lattice vector text lines."""
-        
+
         return '\n'.join( [' '.join(map(str,x)) for x in self.lattice * self.latpar]) #'\n'.join(list(self.lattice))
 
     @property
@@ -634,7 +540,7 @@ class Crystal(object):
         speciesList = []
         for i in range(self.nTypes):
             speciesList += [self.species[i] for x in range(self.atom_counts[i])]
-            
+
         lines = ''
         for idx,i in enumerate(self.basis):
             lines += speciesList[idx] + ' '
@@ -653,13 +559,13 @@ class Crystal(object):
             lines += str(i+1) + ' ' + str(v+1)
 
         return lines
-    
+
     @property
     def basis_lines(self):
         """Return \n joined basis vector text lines."""
         species = []
         for i,n in enumerate(self.atom_counts):
-            species += [self.crystalSpecies[i] ] * n 
+            species += [self.crystalSpecies[i] ] * n
         return '\n'.join( [' '.join(list(map(str,y)) + [species[x]] ) for x,y in enumerate(self.basis)])
 
     def mtpLines(self,relax = False):
@@ -678,7 +584,7 @@ class Crystal(object):
         else:
             result.append('   AtomData:  id type       cartes_x      cartes_y      cartes_z')
         #counter = crystal.lattice.nTypes - 1
-        
+
         # Took me a few minutes to figure this one out.  Very Pythonic
         #        atomLabels = [ x for sublist in [ [ counter - i for k in range(crystal.lattice.atom_counts[i]) ]   for i in range(counter + 1)] for x in sublist]
         atomLabels = [ x for sublist in [ [  i for k in range(self.atom_counts[i]) ]   for i in range(self.nTypes)] for x in sublist]
@@ -686,6 +592,7 @@ class Crystal(object):
             if not relax:
                 forces = self.results["forces"][i]
             coords = self.Bv_cartesian[i]
+#            print(forces,'forces')
             if not relax:
                 result.append('{:16d} {:3d} {:16.6f} {:12.6f} {:12.6f} {:18.6f} {:10.6f} {:10.6f}'.format(i+ 1,atomLabels[i], coords[0],coords[1],coords[2], forces[0],forces[1],forces[2]  ))
             else:
@@ -695,8 +602,8 @@ class Crystal(object):
         if not relax:
             result.append('Energy')
             result.append(str(self.results["energyZ"]) + '')
-        
-        
+
+
             result.append(' Stress:   xx          yy           zz            yz           xz           xy')
             s = self.results["stress"]
             stressesline = '{:16.6f} {:12.6f} {:12.6f} {:12.6f} {:12.6f} {:12.6f}'.format(s[0],s[1],s[2],s[3],s[4],s[5])
@@ -704,10 +611,10 @@ class Crystal(object):
         result.append(''.join([' Feature   conf_id ', '  '.join([self.symbol,self.title]),'']))
         result.append('END_CFG\n')
         return result
-    
+
     def vasplines(self,keepZeros = False):
         """Returns a list of strings for each line in the POSCAR file.
-       
+
         :arg vasp: when true, the atom_counts line is checked for zeros before
           it is created. Vasp can't handle zero for the number of atoms of a
           certain type; just remove it."""
@@ -716,16 +623,13 @@ class Crystal(object):
         result.append(self.title)
         result.append(str(self.latpar))
         result.append(self.lattice_lines)
-        
+
         idxKeep = list(where( self.atom_counts > 0)[0])
         if keepZeros:
             result.append(' '.join(map(str,self.atom_counts)))
         else:
             result.append(' '.join(map(str,self.atom_counts[idxKeep])))
-        #        if vasp:
-        #    result.append(' '.join([a for a in self.atom_counts if a != '0' and a != ' ']))
-        #else:
-        #    result.append(' '.join([a for a in self.atom_counts if a != ' ']))
+
         result.append(self.coordsys)
         result.append(self.basis_lines)
         return result
@@ -741,10 +645,9 @@ class Crystal(object):
     def write(self, filename, fileformat = 'vasp',keepZeros = False):
         """Writes the contents of this POSCAR to the specified file."""
         #fullpath = os.path.abspath(filepath)
-        if not self.speciesMismatch:
-            with open(filename, 'w') as f:
-                f.write('\n'.join(self.lines(fileformat,keepZeros=keepZeros)))
-
+#        if not self.speciesMismatch:
+        with open(filename, 'w') as f:
+            f.write('\n'.join(self.lines(fileformat,keepZeros=keepZeros)))
 
     def concsOK(self,concRestrictions=None):
         from numpy import all,array
@@ -757,7 +660,7 @@ class Crystal(object):
         return False
         #  This routine switches A atoms for B atoms and vice versa
         #  For prototype structures, we only provide one crystal structure
-        # excluding the concentration brothers.  
+        # excluding the concentration brothers.
     def scrambleAtoms(self,scrambleKey):
         from numpy import array
         Bvs = []
@@ -776,22 +679,22 @@ class Crystal(object):
         for i in typesList:
             self.atom_types += i
         self.set_latpar()
-        
+
     @property
     def symbol(self):
         symbol = ''
         for elem, count in zip(self.systemSpecies,self.atom_counts):
                 symbol += elem + '_' + str(count)
         return symbol
-        
-    def set_latpar(self):
+
+    def set_latpar(self,modify = 1.0):
         from aBuild.calculators import data
         #if self.latpar == 1.0 or self.latpar < 0:
             # We must first reverse sorte the species list so we get the right atom in the right place.
         if sorted(self.crystalSpecies,reverse = True) != self.crystalSpecies:
             msg.fatal("Your species are not in reverse alphabetical order... OK?")
         self.latpar = data.vegardsVolume(self.crystalSpecies,self.atom_counts,self.volume)
-
+        self.latpar = self.latpar * modify
     @staticmethod
     def from_poscar(filepath,systemSpecies):
         """Returns an initialized Lattice object using the contents of the
@@ -804,8 +707,6 @@ class Crystal(object):
         from aBuild.calculators.vasp import POSCAR
         lines = POSCAR.from_path(filepath)
         from numpy import array
-        #First get hold of the compulsory lattice information for the class
- #       try:
         crystalDict["lattice"] =  array([list(map(float, l.strip().split()[0:3])) for l in lines.Lv])
         crystalDict["basis"] = array([list(map(float, b.strip().split()[:3])) for b in lines.Bv])
         if lines.species is not None:
@@ -814,20 +715,9 @@ class Crystal(object):
         else:
             # Assume that the passed in species apply to this crystal
             crystalDict["crystalSpecies"] = systemSpecies
-#LJN#            print("Found species information from POSCAR")
-#LJN            if self.crystalSpecies is None:
-#LJN#                print("No species information passed in, setting species info from POSCAR")
-#LJN                # No species passed in, found species in POSCAR, let's use it.
-#LJN                self.crystalSpecies = lines.species
-#LJN            elif self.crystalSpecies != lines.species:
-#LJN                # Why don't they agree?
-#LJN                msg.fatal('It appears that the species in the POTCAR file does not agree with the POSCAR file')
-#LJN        else:
-#LJN            print("Cannot find species information from POSCAR")
-#LJN            if self.crystalSpecies is None:
-#LJN                print("No species information was passed in.  Setting crystalSpecies to systemSpecies")
-#LJN                self.crystalSpecies = self.systemSpecies
         crystalDict["atom_counts"] = array(list(map(int, lines.atom_counts.split() )  ))
+        if len(crystalDict["crystalSpecies"]) != len(crystalDict["atom_counts"]):
+            msg.fatal("Number of species does not agree with the number of atom types read in")
         typesList = [[idx] * aCount for idx,aCount in enumerate(crystalDict["atom_counts"])]
         atom_types = []
         for i in typesList:
@@ -835,22 +725,22 @@ class Crystal(object):
         crystalDict["atom_types"] = atom_types
         crystalDict["latpar"] = float(lines.latpar.split()[0])
         crystalDict["coordsys"] = lines.coordsys
-        crystalDict["title"] = path.split(filepath)[0].split('/')[-1] + '_' + lines.label
+        crystalDict["title"] =  lines.label # path.split(filepath)[0].split('/')[-1] + '_' +
         crystalDict["systemSpecies"] = systemSpecies
-#LJN        self.nAtoms = sum(self.atom_counts)
-#LJN        self.nTypes = len(self.atom_counts)
-        crystalDict["results"] = None
-        print('about to initilize')
+        crystalDict["results"] = {}
+
         return Crystal(crystalDict)
-#        except:
-
-#            raise ValueError("Lv, Bv or atom_counts unparseable in {}".format(filepath))
-
     @property
     def reportline(self):
-        line = [self.title , self.results["energyF"],self.results["energyF"]/self.nAtoms, self.results["fEnth"]]
+        line = [self.title , self.results["energyF"],self.results["energyF"]/self.nAtoms, self.results["fEnth"] if self.results["fEnth"] is not None else 1000]
         lineWrite = '{:55s} {:9.4f} {:12.4f}{:12.4f}'
-        
+        if self.results["distToHull"] is not None:
+            line.append(self.results["distToHull"])
+            lineWrite += '   {:13.6f}       '
+        else:
+            line.append('-----')
+            lineWrite += '   {:8s}   '
+
         for i in self.concentrations:
             line.append(i)
             lineWrite += '  {:4.2f}  '
@@ -865,7 +755,7 @@ class Crystal(object):
 #            line.append(self.atom_counts[i])
 #            lineWrite += '{:2d}'
 
-
+        print(line)
         return lineWrite.format(*line)
 
 
@@ -922,7 +812,7 @@ class Crystal(object):
         crystalDict["title"] = ' '.join(lines[titleindex].split()[2:])
         if any(['Energy' in x for x in lines] ):
             energyindex = ['Energy' in x for x in lines].index(True)
-            
+
             results["energyF"] = float(lines[energyindex + 1].strip().split()[0])
 #            root = os.getcwd()
 #            pures = [VASP(path.join(root,'training_set','pure' + x),systemSpecies = self.species)   for x in self.species]
@@ -946,16 +836,15 @@ class Crystal(object):
 
         crystalDict["results"] = results
         return Crystal(crystalDict)
-    
+
     @staticmethod  # Needs fixed!!!
-    def fromEnum(enumDict,structNum):
+    def fromEnum(enum,structNum,species):
+        from aBuild.enumeration import Enumerate
 
-
-        enumLattice.generatePOSCAR(struct)
-        result = Crystal.fromPOSCAR(enumLattice.root, self.systemSpecies,
-                                         filename = "poscar.{}.{}".format(lat,struct),
-                                         title = ' '.join([lat," str #: {}"]).format(struct))
-
+#        enumLattice = Enumerate(enumDict)
+        enum.generatePOSCAR(structNum)
+        result = Crystal.from_poscar(path.join(enumLattice.root,"poscar.{}.{}".format(enumDict["name"],structNum)),species)
+        result.set_latpar()
         return result
 
 
@@ -974,10 +863,10 @@ class Crystal(object):
 
     def mlpLines(self):
         pass
-        
+
     def setAtypes(self):
         pass
-        
+
     #    def writePOSCAR(self,filepath):
     #    from aBuild.calculators.vasp import POSCAR
 
@@ -985,7 +874,7 @@ class Crystal(object):
         # everything that's inside of crystal
         #    lines = POSCAR(self)
         #lines.write(filepath,vasp=True)
-    
+
 
     def superPeriodics(self,size):
         from numpy import dot,array,prod,einsum,any,all,copy
@@ -999,7 +888,7 @@ class Crystal(object):
             return []
         # Generate all super-periodic lattice vectors
         dimension = len(self.lattice)
-        multiplesOf = array([x for x in combinations([x for x in product(range(-2,3),repeat = dimension) if sum(abs(array(x))) !=0],dimension) ]) 
+        multiplesOf = array([x for x in combinations([x for x in product(range(-2,3),repeat = dimension) if sum(abs(array(x))) !=0],dimension) ])
         lattices = einsum('abc,dc->abd',multiplesOf,transpose(self.lattice))
         #Keep only the lattices with i) positive triple product  ii) specified size increase or less  iii) orthogonality defect
         # less than 2, and sort them by their orthogonality defect.
@@ -1007,7 +896,7 @@ class Crystal(object):
 
 #        sorted(keeps, key = lambda k: orthogonality_defect(k))
         # Done getting super-periodic lattice vectors.
-        
+
         # Get all atoms by adding multiples of the parent lattice vectors
         combs =  [x for x in product(range(-4,4),repeat = 3)]
         latticeVecCombinations = einsum('ab,bd->ad', combs,self.lattice*self.latpar)
@@ -1056,7 +945,7 @@ class Crystal(object):
                         newCrystal.atom_counts[atomType] += 1
                         newCrystal.nAtoms += 1
                         track += 1
-                
+
             if abs(newCrystal.nAtoms - sizeIncrease * self.nAtoms) > 1e-5:
                 print("You don't have enough atoms")
                 print(self.nAtoms, 'n primitive atoms')
@@ -1075,7 +964,7 @@ class Crystal(object):
             sortKey = sorted(range(newCrystal.nAtoms), key = lambda x: newCrystal.atom_types[x])
             newCrystal.basis = [newCrystal.basis[x] for x in sortKey]
             newCrystal.atom_types = sorted(newCrystal.atom_types)
-            
+
             print(newCrystal.minDist, 'mindist)')
             with open('supers.out','a+') as f:
                 f.writelines("Title\n")
@@ -1087,7 +976,7 @@ class Crystal(object):
 
             if abs(newCrystal.minDist - self.minDist)    > 1e-3:
                 msg.fatal("mindist for super-periodic is different than parent")
-                
+
             print("Got Super-periodic.  Checking for AFM compatible")
             if newCrystal.getAFMPlanes([1,0,0]):
                 return newCrystal
@@ -1096,6 +985,3 @@ class Crystal(object):
         #import sys
         #sys.exit()
         return []
-        
-
-       

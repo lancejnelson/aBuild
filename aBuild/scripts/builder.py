@@ -27,6 +27,8 @@ script_options = {
            "help": "Which structure do you want to start with"},
     "-file": {"type": str, "default": None,
            "help": "Specify a file as input"},
+    "-dataset": {"type": str, "default": 'gss',
+           "help": "Specify the enumeration dataset"},
     "-datafile": {"type": str, "default": None,
            "help": "Specify a file as input"},
     "-predictfile": {"type": str, "default": None,
@@ -45,6 +47,10 @@ script_options = {
                          "based on presence of completed VASP "
                          "directories. Sanity check before `-x`.")},
     "-setup_relax": {"action": "store_true",
+                "help": ("Setup input files for an mlp relax run "
+                         "based on presence of completed VASP "
+                         "directories. Sanity check before `-x`.")},
+    "-setupHullCalcs": {"action": "store_true",
                 "help": ("Setup input files for an mlp relax run "
                          "based on presence of completed VASP "
                          "directories. Sanity check before `-x`.")},
@@ -107,7 +113,7 @@ def run(args):
     cdb = Controller(args.dbspec)
     print(args.POSCAR,'POSCAR')
     if args.enum:
-        cdb.enumerate('trainingset')
+        cdb.enumerate(args.dataset)
     if args.write:
         cdb.setup_training_set(runGetKpoints = args.rgk)
 
@@ -134,9 +140,11 @@ def run(args):
     if args.add:
         cdb.augmentTraining()
     if args.report:
-        cdb.gatherResults(file=args.file)
+        cdb.gatherResults(datafile=args.datafile)
+    if args.setupHullCalcs:
+        cdb.setupHullPredictions()
     if args.chull:
-        cdb.generateConvexHull(file = args.file)
+        cdb.generateConvexHull(dataFile = args.datafile)
     if args.errorhist:
         cdb.errorsReport(datafile = args.datafile, predictFile = args.predictfile)
 #    if args["s"]:

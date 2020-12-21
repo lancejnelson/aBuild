@@ -4,10 +4,10 @@ from aBuild import msg
 from aBuild import config
 
 import sys
-config = sys.modules["config"]  
+config = sys.modules["config"]
 
 class Enumerate:
-    
+
     def __init__(self,specs,arrows = None,name = "enum",overwrite=False):
         from aBuild.database.crystal import Lattice
         self.root = specs["root"]
@@ -27,7 +27,7 @@ class Enumerate:
         self.sizeRange = specs["sizes"]
         self.eps = specs["eps"]
         self.nConfigs = specs["nconfigs"]
-
+        self.latticeExpand = specs["latticeExpand"] #In case we want to increase/decrease atomic spacings
         self._processConcRestrictions(specs["concs"])
 
         self._processSiteRestrictions(specs["site_res"])
@@ -40,16 +40,45 @@ class Enumerate:
 
 
 
-            
+
     def setNEnumerated(self,nEnumerated):
         self.nEnumerated = nEnumerated
-            
-            
+
+
+    @staticmethod
+    def fromYAML(specs,index,knary,root):
+        edict = {}
+        edict["lattice"] = specs["lattice"][index]
+        if 'basis' in specs.keys():
+            edict["basis"] = specs["basis"][index]
+        edict["knary"] = knary
+        edict["nconfigs"] = specs["nconfigs"][index]
+        edict["sizes"] = specs["sizes"][index]
+        if "siteRestrictions" in specs.keys():
+            edict["site_res"] = specs["siteRestrictions"][index]
+        else:
+            edict["site_res"] = None
+        if 'coordsys' in specs.keys():
+            edict["coordsys"] = specs["coordsys"][index]
+        edict["name"] = specs["name"][index]
+        if "concs" in specs.keys():
+            edict["concs"] = specs["concs"][index]
+        else:
+            edict["concs"] = None
+        edict["root"] = root
+        edict["eps"] = 1e-3
+        if 'latticeExpand' in specs.keys():
+            edict["latticeExpand"] = specs["latticeExpand"][index]
+        else:
+            edict["latticeExpand"] = 1.0
+        return Enumerate(edict)
+
+
     @staticmethod
     def from_enum_file(path):
         with open(path,'r') as f:
             lines = f.readlines()
-        
+
     def _processConcRestrictions(self,concs):
         knarylookup = {2: "binary", 3: "ternary", 4:"quaternary"}
         if concs is not None:
@@ -69,7 +98,7 @@ class Enumerate:
             self.site_res = None
             self.siteRestrictions = None
             return
-        
+
         if site_res is not None:
             self.site_res = True
             self.siteRestrictions = site_res
@@ -88,9 +117,9 @@ class Enumerate:
 
 #    def _get_lattice(self,lattice):
 #        """Gets the lattice vectors for the system.
-#        
+#
 #        Args:
-#            lattice (str or list): either a string containing the lattice 
+#            lattice (str or list): either a string containing the lattice
 #                name or a 3x3 list of the vectors as [a1,a2,a3].
 #        """
 #        # determine the lattice.
@@ -157,19 +186,19 @@ class Enumerate:
             msg.info("The file you are trying to generate already exists")
             if overwrite:
                 msg.info("but you said to overwrite it, so I'm moving forward")
-                
+
             else:
                 msg.info("and you told me not to overwrite.  Stopping, no new files generated.!")
                 return
         else:
             msg.info("File: struct_enum.in({}) not found! Building it".format(self.lattice.lattice_name))
 
-        
+
         from jinja2 import Environment, PackageLoader  # Package for building files from a template
 
-        knaryDict = {2:" Binary", 3: " Ternary", 4: " Quaternary", 5: "Quinary"}
+        knaryDict = {2:"binary", 3: "ternary", 4: "quaternary", 5: "quinary"}
         settings = {}
-        settings["title"] = self.lattice.lattice_name  + ' ' + knaryDict[self.knary] 
+        settings["title"] = self.lattice.lattice_name  + ' ' + knaryDict[self.knary]
         settings["template"] = "struct_enum.in"
         settings["eps"] = self.eps
         settings["size_low"] = self.sizeRange[0]
@@ -182,7 +211,7 @@ class Enumerate:
                     temp.append("{0} {1}".format(" ".join([str(j) for j in self.concs[i]]),a))
             else:
                 temp = [" ".join([str(i) for i in j]) for j in self.concRestrictions]
-                    
+
             settings["concentrations"] = temp
         else:
             settings["conc_res"] = "F"
@@ -194,7 +223,7 @@ class Enumerate:
         settings["k_nary"] = self.knary
 
         settings["atomic_basis"] = [" ".join([str(k) for k in self.lattice.basis[i]]) + " " + self.siteRestrictions[i] for i in range(self.lattice.nBasis)]
-        settings["n_basis"] = self.lattice.nBasis 
+        settings["n_basis"] = self.lattice.nBasis
 
 
         env = Environment(loader=PackageLoader('aBuild', 'templates'))
@@ -218,7 +247,7 @@ class Enumerate:
                 return
         else:
             msg.info("File: struct_enum.out not found!  Running enumeration code.")
-            
+
         from os import waitpid
         from subprocess import Popen
         if config.ENUMX is not None:
@@ -239,7 +268,7 @@ class Enumerate:
         if not path.isfile(target):
             msg.info("No struct_enum.out found.")
             return 0
-        
+
         with open(target,'r') as f:
             lines = f.readlines()
 
@@ -247,7 +276,7 @@ class Enumerate:
             return int(lines[-1].split()[0])
         except:
             return 0
-        
+
     def generatePOSCAR(self,sNumber):
         from os import waitpid
         from subprocess import Popen
@@ -293,13 +322,13 @@ class Enumerate:
         result = Enumerate(specs)
         result.setNEnumerated(nEnumerated)
         return result
-    
+
     def fromINPUT(self,root,filename):
         from os import path
 
         filepath = path.join(root,filename)
         if path.isfile(filepath):
-            
+
             specs = {}
             with open(filepath,'r') as f:
                 lines = f.readlines()
@@ -318,15 +347,14 @@ class Enumerate:
             return result
         else:
             return None
-    
+
 
     def isSame(self,enumObject):
         same = True
         lookup = {"lattice":self.lattice,"sizes":self.sizeRanges}
         if self.lattice != enumObject.lattice:
             return False
-        #        if all( array(self.sizeRanges) < array(enumObject.sizeRanges) ) 
+        #        if all( array(self.sizeRanges) < array(enumObject.sizeRanges) )
         for i in lookup:
             if enumObject[i] != lookup[i]:
                 return False
-        

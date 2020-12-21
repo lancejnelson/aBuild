@@ -31,19 +31,29 @@ def head(filename,lineNum,postProcess):
 
 def tail(filename,lineNum,postProcess):
     command = "tail -{} {} {}".format(lineNum,filename,postProcess)
+    print('running tail command: {}'.format(command))
     child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
     result = child.communicate()[0]
     #    waitpid(child.pid, 0)
-    print(child.stdout.decode('utf-8'))
+#    print(child.stdout.decode('utf-8'))
     return child.stdout
 
-def cat(filename,postProcess):
-    command = "cat {} {}".format(filename,postProcess)
+#LJNdef cat(filename,postProcess):
+#LJN    command = "cat {} {}".format(filename,postProcess)
+#LJN    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
+#LJN    result = child.communicate()[0]
+#LJN    #    waitpid(child.pid, 0)
+#LJN    print(result.stdout.decode('utf-8').split('\n')[:-1])
+#LJN    return result.stdout.decode('utf-8').split('\n')[:-1]
+
+
+def sed(options,string,fileName,postProcess):
+    command = "sed {} '{}' {} {}".format(options,string,fileName,postProcess)
     child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
     result = child.communicate()[0]
     #    waitpid(child.pid, 0)
-    print(result.stdout.decode('utf-8').split('\n')[:-1])
-    return result.stdout.decode('utf-8').split('\n')[:-1]
+    return result.decode('utf-8').split('\n')[:-1]
+
 
 def rgrep(filename,tag):
     if not path.isfile(filename):
@@ -74,24 +84,27 @@ def grep(filename,tag,options='',postprocess = ''):
 #        if tag in line:
 #            matchedlines.append(line)
 #    return matchedlines
-    if not path.isfile(filename):
-        return None
-    lines = []
-    with open(filename,'r') as f:
-        m = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
-        i = m.find(str.encode(tag))
-        while i > 0:
-            m.seek(i)
-            lines.append(m.readline())
-            i = m.find(tag)
-            
-#LJN    if 'xz' in filename:
-#LJN        command = 'xzgrep {} "{}" {} {}'.format(options, tag,filename,postprocess)
-#LJN    else:
-#LJN        command = 'grep {} "{}" {} {}'.format(options, tag,filename,postprocess)
-#LJN#    print('greping file {} for tag {} with command: {}'.format(filename,tag,command))
-#LJN    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
-#LJN    result = child.communicate()[0]
+
+#LjN    print("Grepping for {} in file {}".format(tag,filename))
+#LjN    if not path.isfile(filename):
+#LjN        return None
+#LjN    lines = []
+#LjN    with open(filename,'r') as f:
+#LjN        m = mmap.mmap(f.fileno(),0,prot=mmap.PROT_READ)
+#LjN        i = m.find(str.encode(tag))
+#LjN        print(i,'i')
+#LjN        while i > 0:
+#LjN            m.seek(i)
+#LjN            lines.append(m.readline())
+#LjN            i = m.find(tag)
+#LjN    return lines
+    if 'xz' in filename:
+        command = 'xzgrep {} "{}" {} {}'.format(options, tag,filename,postprocess)
+    else:
+        command = 'grep {} "{}" {} {}'.format(options, tag,filename,postprocess)
+    print('greping file {} for tag {} with command: {}'.format(filename,tag,command))
+    child=Popen(command, shell=True, executable="/bin/bash",stdout=PIPE)
+    result = child.communicate()[0]
 #    print('Result',result.decode('utf-8').split('\n')[:-1])
     return result.decode('utf-8').split('\n')[:-1]#child.stdout
     #if len(result.decode('utf-8').split('\n')) == 1 and result.decode('utf-8').split('\n')[0] == '':

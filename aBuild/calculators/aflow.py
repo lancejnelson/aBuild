@@ -20,16 +20,10 @@ class AFLOW:
         self.incar_auto_build = autobuild["incar"]
         self.kpoints_auto_build = autobuild["kpoints"]
         self.potcar_auto_build = autobuild["potcar"]
-#        self.species = systemSpecies
-#        if isinstance(specs,dict):
-#            self._init_dict(specs)
-#        elif isinstance(specs,str):
-#            if self.species == None:
-#                msg.error("You can't initialize an AFLOW object using a path without also specifying the system species")
-#            self.directory = specs
-#            self._init_path()
-               
 
+
+    def set_filesuffix(self,filesuffix):
+        self.filesuffix = filesuffix
     # If you initialize the AFLOW object with a dictionary, the dictionary *must* have the following entries:
     #               incar
     #               potcars
@@ -40,8 +34,11 @@ class AFLOW:
     # with the crystal and the species information.
     @staticmethod
     def from_dictionary(specsDict):
-       
-        aflowin = specsDict['aflowin']
+        runDir = specsDict["directory"]
+        if 'aflowin' in specsDict:
+            aflowin = specsDict['aflowin']
+        else:
+            aflowin = {}
         auto_build = {}
         if specsDict['incar']['build'] != 'auto':
             incarobj = INCAR(specsDict["incar"])
@@ -49,11 +46,11 @@ class AFLOW:
         else:
             incarobj = specsDict["incar"]
             auto_build["incar"] = True
-        if specsDict['potcars']['build'] != 'auto':
-            potcarobj = POTCAR(specsDict["potcars"])
+        if specsDict['potcar']['build'] != 'auto':
+            potcarobj = POTCAR(specsDict["potcar"])
             auto_build["potcar"] = False
         else:
-            potcarobj = specsDict["potcars"]
+            potcarobj = specsDict["potcar"]
             auto_build["potcar"] = True
             
         if specsDict['kpoints']['build'] != 'auto':
@@ -65,7 +62,7 @@ class AFLOW:
 
             
         crystal = specsDict["crystal"]
-        return AFLOW(incarobj,kpointsobj,potcarobj,crystal,aflowin,autobuild = auto_build)
+        return AFLOW(incarobj,kpointsobj,potcarobj,crystal,aflowin,runDir,autobuild = auto_build)
 #        species = specsDict["species"]
 
     # If you initialize your AFLOW object with the path to the calculation, you must also specify the system's species
@@ -75,7 +72,7 @@ class AFLOW:
     # This most often happens when you are wanting to suck out the results from a calculation that has finished.
 
     @staticmethod
-    def from_path(directory,species):
+    def from_path(directory,species,filesuffix = '.static.xz'):
         from aBuild.database.crystal import Crystal
         from aBuild.calculators.vasp import POTCAR,KPOINTS
 
@@ -83,12 +80,21 @@ class AFLOW:
         # In this case, we want to read all the relevant information from the aflow.in file.
         from os import path
 
-        potcar = POTCAR.from_path(path.join(directory,'POTCAR.static.xz'))
+        potcar = POTCAR.from_path(path.join(directory,'POTCAR' + filesuffix))
+        if potcar is None:
+            potcar = POTCAR.from_path(path.join(directory,'POTCAR'))
         kpoints = KPOINTS.from_path(directory)
-        incar = INCAR.from_path(path.join(directory,'INCAR.static.xz'))
-        crystal = Crystal.from_path(path.join(directory,'POSCAR.static.xz'),species)
-        
-        return AFLOW(incar,kpoints,potcar,crystal,None,directory)
+        incar = INCAR.from_path(path.join(directory,'INCAR' + filesuffix))
+        if incar is None:
+            incar = INCAR.from_path(path.join(directory,'INCAR'))
+
+        crystal = Crystal.from_path(path.join(directory,'POSCAR' + filesuffix),species)
+        if crystal is None:
+            crystal = Crystal.from_path(path.join(directory,'POSCAR'),species)
+
+        aflowobj = AFLOW(incar,kpoints,potcar,crystal,None,directory)
+        aflowobj.set_filesuffix(filesuffix)
+        return aflowobj
         
         
 
@@ -108,16 +114,18 @@ class AFLOW:
         with open('aflow.in','r') as f:
             currentlines = f.readlines()
         for line in currentlines:
-#            found = False
-            needsRemoved = (True in [x in line for x in self.aflowin['remove']]) or (not self.kpoints_auto_build and '[VASP_KPOINTS_FILE]' in line)
-            
+            if  'remove' in self.aflowin:
+                needsRemoved = (True in [x in line for x in self.aflowin['remove']]) or (not self.kpoints_auto_build and '[VASP_KPOINTS_FILE]' in line)
+            else:
+                needsRemoved = False
+                
             if 'add' in self.aflowin:
                 needsAdded = True in [x in line for x in self.aflowin['add']]
             else:
                 needsAdded = False
 
-            if True in [x in line for x in self.aflowin['replace']]:
-                needsReplaced  = True
+            if 'replace' in self.aflowin:
+                needsReplaced = True in [x in line for x in self.aflowin['replace']]
                 replaceTag = line.split()[0]
                 replacement = self.aflowin['replace'][replaceTag] + '\n'
             elif not self.kpoints_auto_build and '[VASP_KPOINTS_MODE_IMPLICIT]' in line:
@@ -136,18 +144,6 @@ class AFLOW:
                 print('Added branch triggered')
             else:
                 lines.append(line)
-#            elif not self.kpoints_auto_build:
-#                if '[VASP_KPOINTS_FILE]' in line:
-#                    continue
-  #                  found = True
-#                if '[VASP_KPOINTS_MODE_IMPLICIT]' in line:
-#                    lines.append('[VASP_KPOINTS_MODE_EXTERNAL]\n')
-  #                  found = True
- #           else:
- #               lines.append(line)
-
- #           if not found:
- #               lines.append(line)
 
         with open('aflow.in','w') as f:
             f.writelines(lines)
@@ -157,7 +153,7 @@ class AFLOW:
     def can_extract(self):
         import lzma
 
-        outcar = path.join(self.directory,'OUTCAR.static.xz')
+        outcar = path.join(self.directory,'OUTCAR' + self.filesuffix)
         if not path.isfile(outcar):
             return False
         with lzma.open(outcar,'rt') as f:
@@ -193,7 +189,7 @@ class AFLOW:
     def is_converged(self):
         from aBuild.utility import rgrep
         import lzma
-        oszicar = path.join(self.directory, 'OSZICAR.static.xz')
+        oszicar = path.join(self.directory, 'OSZICAR' + self.filesuffix)
         electronicIt = 0
         with lzma.open(oszicar,'rt') as f:
             for line in f.readlines():
@@ -205,7 +201,26 @@ class AFLOW:
         else:
             return False
         
-    def status(self):
+
+    def fix_unconverged(self):
+        lines = []
+        aflowpath = path.join(self.directory,'aflow.in')
+        with open(aflowpath,'r') as f:
+            currentlines = f.readlines()
+        for line in currentlines:
+            if 'INCAR' in line:
+                lines.append(line)
+                lines.append('ICHARG=2')
+                lines.append('BMIX = 3.0')
+                lines.append('AMIN = 0.01')
+            else:
+                lines.append(line)
+
+        fixedaflowpath = path.join(self.directory,'aflow.fixed')
+        with open(fixedaflowpath,'w') as f:
+            f.writelines(lines)
+
+    def status(self,fix = False,addUnconverged = False):
         from os import path
         from time import time
         from aBuild.utility import grep
@@ -217,9 +232,11 @@ class AFLOW:
 
 
         if self.can_extract():
-            if self.is_converged():
+            if self.is_converged() or addUnconverged:
                 return 'done'
             else:
+                if fix:
+                    self.fix_unconverged()
                 return 'unconverged'
         elif self.is_executing():
             return 'running'
@@ -234,11 +251,10 @@ class AFLOW:
         self.writeaflowfromposcar('POSCAR')
         if os.path.getsize('aflow.in') < 10:
             return False
+        print(self.kpoints_auto_build, 'check')
         if not self.kpoints_auto_build:
             # Now build the KPOINTs file
-            self.KPOINTS.rGP = True
             success = self.KPOINTS.writeKPOINTS()
-            print(success, 'success?')
             if not success:
                 currentMethod = self.KPOINTS.specs["method"]
                 if currentMethod == 'autogr':
@@ -259,8 +275,8 @@ class AFLOW:
                     if not retrySuccess:
                         msg.info("KPOINTS build failed, reverting to MP grid")
                         self.kpoints_auto_build = True
-            self.modifyaflowin()
-            return True
+        self.modifyaflowin()
+        return True
 
     def check_atom_counts_zero(self):
         from numpy import array,any
@@ -271,26 +287,37 @@ class AFLOW:
             self.crystal.atom_counts = self.crystal.atom_counts[idxKeep]
             self.crystal.species = list(array(self.species)[idxKeep])
 
-    def read_results(self, allElectronic = False, allIonic=False):
+    def read_results(self,pures = None):
         if self.directory is not None and self.status() in ['done','unconverged']:
             with chdir(self.directory):
                 self.crystal.results = {}
                 self.crystal.results["warning"] = False
-                self.crystal.results["energyF"],self.crystal.results["forces"] = self.read_energy_and_forces()
+                self.crystal.results["energyZ"],self.crystal.results["energyF"],self.crystal.results["forces"] = self.read_energy_and_forces()
                 self.crystal.results["stress"] = self.read_stress()
                 #self.POTCAR = POTCAR.from_POTCAR()
                 self.crystal.results["species"] = self.POTCAR.species
                 self.crystal.results["energypatom"] = self.crystal.results["energyF"]/self.crystal.nAtoms
-                if abs(self.crystal.results["energyF"]) > 1000:
-                    self.crystal.results["warning"] = True
-                if 'pure' not in self.directory:
-                    self.crystal.results["fEnth"] = self.formationEnergy
-                else:
+                if 'pure' in self.directory:
                     self.crystal.results["fEnth"] = 0
+                elif True not in [x is None for x in pures]:
+                    self.crystal.results["fEnth"] = self.formationEnergy(pures)
+                else:
+                    self.crystal.results["fEnth"] = 10000
+                self.crystal.results["distToHull"] = None
         else:
             print(self.status(), 'not reading results')
-            self.crystal.results = None
-            msg.info("Unable to extract necessary information from directory! ({})".format(self.directory))
+            if self.crystal is not None:
+                self.crystal.results = None
+            msg.info("Unable to extract necessary information from directory! ({})   Status: {}".format(self.directory,self.status()))
+
+
+    def formationEnergy(self,pures):
+        from os import path
+
+        print("Super energy/atom {}, pures energy/atom {} {} {}".format(self.crystal.results["energyF"]/self.crystal.nAtoms,*[ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms for i in range(self.crystal.nTypes)]))
+        formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
+
+        return formationEnergy
 
     def read_energy_and_forces(self):
         import lzma
@@ -308,8 +335,8 @@ class AFLOW:
         for idx,line in enumerate(resultslines):
             # Free energy
             if 'TOTAL-FORCE' in line:
-                for i in range(idx + 2, idx + 2 + self.crystal.nAtoms + 1):
-                    forces.append(array(resultslines[i].split()[-3:]))
+                for i in range(idx + 2, idx + 2 + self.crystal.nAtoms):
+                    forces.append(array([float(x) for x in resultslines[i].split()[-3:]]))
             if 'E_cell' in line:
                 energyF = float(line.split()[0].split('=')[1])
             # Extrapolated zero point energy
@@ -319,12 +346,12 @@ class AFLOW:
 #                else:
 #                    energyZ = float(line.split()[-1])
                         
-        return energyF,forces
+        return energyF,energyF,forces
 
     def read_stress(self):
         import lzma
         stress = None
-        for line in lzma.open('OUTCAR.static.xz','rt'):
+        for line in lzma.open('OUTCAR' + self.filesuffix,'rt'):
             if line.find(' in kB  ') != -1:
                 stress = -np.array([float(a) for a in line.split()[2:]])
                 stress = stress[[0, 1, 2, 4, 5, 3]] * 1e-1 #* .00624151# * ase.units.GPa.. Gets me to Giga Pascals              

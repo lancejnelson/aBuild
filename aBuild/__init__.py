@@ -4,7 +4,7 @@ from aBuild import msg # messaging module
 from aBuild.utility import chdir, _get_reporoot
 import sys
 
-config = sys.modules["config"]  
+config = sys.modules["config"]
 
 class Controller(object):
     """ Args:
@@ -29,9 +29,9 @@ class Controller(object):
         # Read the input file
         self.specs = read(root,inputFile)
 
-        if "directory" not in self.specs["calculator"]["vasp"]["potcar"] or self.specs["calculator"]["vasp"]["potcar"]["directory"] is None:
+        if "srcdirectory" not in self.specs["calculator"]["vasp"]["potcar"] or self.specs["calculator"]["vasp"]["potcar"]["srcdirectory"] is None:
             print("You did not provide a directory for the POTCARS. Using the environment variable that I found: {}".format(config.POTCAR_DIR))
-            self.specs["calculator"]["potcar"]["directory"] = config.POTCAR_DIR
+            self.specs["calculator"]["potcar"]["srcdirectory"] = config.POTCAR_DIR
 
         self.root = path.expanduser(self.specs["root"])  # Set the working directory
 
@@ -50,115 +50,29 @@ class Controller(object):
 
     def setDataSet(self,dataSetType):
         self.dataset = dataSetType
-        
-
-    @property
-    def nconfigs(self):
-        return self.specs[self.dataset]["nconfigs"]
-    
-    @property
-    def enumLattices(self):
-        if "lattice" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["lattice"]
-        else:
-            ermsg = 'You have not specified a lattice type'
-            msg.fatal(ermsg)  # Print the error message
-            
-
-    @property
-    def nEnums(self):
-        return len(self.enumLattices)
-
-    @property
-    def enumConcs(self):
-        if "concs" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["concs"]
-        else:
-            return [None for k in range(self.nEnums)]
 
 
     @property
-    def atomicBasis(self):
-        if "basis" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["basis"]
-        else:
-            # Default to [0,0,0] when the enum object gets called up
-            return [None for k in range(self.nEnums)]
+    def enums(self):
+        from aBuild.enumeration import Enumerate
 
+        nEnums = len(self.specs[self.dataset]["lattice"])
 
-    @property
-    def concRestrictions(self):
-        if "concs" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["concs"]
-        else:
-            return [None for k in range(self.nEnums)]
+        enums = []
+        for index in range(nEnums):
+            enums.append(Enumerate.fromYAML(self.specs[self.dataset],index,self.knary,self.root))
+        return enums
 
-
-    @property
-    def enumSizes(self):
-        if "sizes" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["sizes"]
-        else:
-            ermsg = 'You have not specified the enumeration sizes in your input file'
-            msg.err(ermsg)  # Print the error message
-            import sys
-            sys.exit()
-
-    
-    @property
-    def name(self):
-        if "name" in self.specs[self.dataset]:
-            savedNames = self.specs[self.dataset]["name"]
-            for idx,name in enumerate(savedNames):
-                if name is None:
-                    savedNames[idx] = self.specs[self.database]["lattice"][idx]
-            return savedNames#self.specs[self.dataset]["name"]
-        else:
-            return [None for k in range(self.nEnums)]
-        
-    @property
-    def coordsys(self):
-        if "coordys" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["coordys"]
-        else:
-            return [None for k in range(self.nEnums)]
-
-    @property
-    def siteRestrictions(self):
-        if "siteRestrictions" in self.specs[self.dataset]:
-            return self.specs[self.dataset]["siteRestrictions"]
-        else:
-            return [None for k in range(self.nEnums)]
-
-    @property
-    def enumDicts(self):
-        edicts = []
-        for i in range(self.nEnums):
-            edict = {}
-            edict["lattice"] = self.enumLattices[i]
-            edict["basis"] = self.atomicBasis[i]
-            edict["knary"] = self.knary
-            edict["nconfigs"] = self.nconfigs[i]
-            edict["sizes"] = self.enumSizes[i]
-            edict["site_res"] = self.siteRestrictions[i]
-            edict["coordsys"] = self.coordsys[i]
-            edict["name"] = self.name[i]
-            edict["concs"] = self.concRestrictions[i]
-            edict["root"] = self.root
-            edict["eps"] = 1e-3
-            edicts.append(edict)
-        
-        return edicts
-    
     def enumerate(self,dataset):
         from aBuild.enumeration import Enumerate
 
-        self.dataset = dataset
-        for index in range(self.nEnums):
-            enumController = Enumerate(self.enumDicts[index])
+        nEnums = len(self.specs[dataset]["lattice"])
+
+        for index in range(nEnums):
+            enumController = Enumerate.fromYAML(self.specs[dataset],index,self.knary,self.root)
             enumController.buildInputFile(False)
             enumController.enumerate(False)
-        
+
 
     # BUild VASP folders so I can generate training data
     # This mode is no longer used because with MTP we can
@@ -166,27 +80,27 @@ class Controller(object):
     # first set of training structures
     def setup_training_set(self,runGetKpoints = True):
         from os import path
-        
+
         from aBuild.database.dataset import dataset
 
         self.dataset = "trainingset"
         trainingRoot = path.join(self.root,'training_set')
         trainingSet = dataset(self.enumDicts,self.species,restrictions = 'AFM' in self.calculator[self.calculator["active"]])
         trainingSet.buildFolders(trainingRoot,self.calculator,runGetKpoints = runGetKpoints)
-        
-        
+
+
 
     def setupHandler(self,model,tag,start = 1,end = None):
         from aBuild.fitting.mtp import MTP
         from os import path
-        
+
         fittingRoot = path.join(self.root, 'fitting/mtp')
         trainingRoot = path.join(self.root, 'training_set')
 
         self.dataset = 'gss'
         thisMTP = MTP(fittingRoot,settings=self.fitting)
         handler = {'setup_train':lambda: thisMTP.setup_train(trainingRoot,self.species),
-                   'setup_relax':lambda:thisMTP.setup_relax(self.enumDicts,self.species,AFM = 'AFM' in self.calculator[self.calculator["active"]].keys(), start = start,end = end),
+                   'setup_relax':lambda:thisMTP.setup_relax(self.enums,self.species,AFM = 'AFM' in self.calculator[self.calculator["active"]].keys(), start = start,end = end),
                     'setup_select_add':lambda :thisMTP.setup_select()}
         handler[tag]()
 
@@ -199,23 +113,30 @@ class Controller(object):
         trainingRoot = path.join(self.root,'training_set')
         dSet = dataset.from_file(newTraining,self.species,'mlp')
         dSet.buildFolders(trainingRoot,self.calculator,foldername = 'A')
-        
+
     def statusReport(self):
-        
+
         from os import path,listdir,remove
         from glob import glob
         from aBuild.calculators.vasp import VASP
         from aBuild.calculators.aflow import AFLOW
-        trainingRoot = path.join(self.root, 'training_set')
+        from numpy import argsort
+        trainingRoot = path.join(self.root, 'validation_set')
         with chdir(trainingRoot):
             enumdirs = glob("E.*")
             activedirs = glob("A.*")
 
-        delFiles = glob("*.status")
+        delFiles = glob("status.*")
         for i in delFiles:
             remove(i)
         dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs]
-        for idx,directory in enumerate(dirs):
+        nDirs = len(dirs)
+        numdirs = [int(y.split('.')[-1]) for y in dirs]
+        count = 0
+        for idx,directory in enumerate([dirs[x] for x in argsort(numdirs)]):
+            if count % 100 == 0:
+                print("checking directories {} - {}".format(dirs[argsort(numdirs)[count+1]],dirs[argsort(numdirs)[count + 100 if count + 100 < nDirs else nDirs - 1]]))
+            count += 1
             if 'aflow.in' in listdir(directory):
                 thisAFLOW = AFLOW.from_path(directory,self.species)
                 thisStat = thisAFLOW.status()
@@ -225,66 +146,53 @@ class Controller(object):
                 thisStat = thisVASP.status()
             if thisStat == 'errors' or thisStat == 'running':
                 msg.info("Directory {} is {} ".format(directory, thisStat))
-                
-            with open(thisStat+'.status','a') as f:
-                f.write(directory.split('/')[-1] + '  ')
-#            stat[thisStat].append(directory.split('/')[-1])
-#            msg.info("Status is {} ".format(thisStat))
-#        msg.info('Done (' + str(len(stat['done'])) + ')')
-#        msg.info(' '.join(stat['done']))
-#        msg.info('Running (' + str(len(stat['running'])) + ')')
-#        msg.info(' '.join(stat['running']))
-#        msg.info('Not Started (' + str(len(stat['not started'])) + ')')
-#        msg.info(' '.join(stat['not started']))
-#        msg.info('Not Setup (' + str(len(stat['not setup'])) + ')')
-#        msg.info(' '.join(stat['not setup']))
-#        msg.info('Killed before done (' + str(len(stat['killed before done'])) + ')    (last write was > 1 hr ago) ')
-#        msg.info(' '.join(stat['killed before done']))
-#        msg.info('Warnings (' + str(len(stat['warning'])) + ')')
-#        msg.info(' '.join(stat['warning']))
-#        msg.info('Not sure (' + str(len(stat['idk'])) + ')  (Found finish tags but couldn''t find final energy.  It''s probably in the process of finishing.)')
-#        msg.info(' '.join(stat['idk']))
-#        msg.info('Unconverged (' + str(len(stat['unconverged'])) + ')')
-#        msg.info(' '.join(stat['unconverged']))
-#        msg.info('SGRCON error (' + str(len(stat['sgrcon'])) + ')')
-#        msg.info(' '.join(stat['sgrcon']))
-#        msg.info('Unknown error (' + str(len(stat['error'])) + ')')
-#        msg.info(' '.join(stat['error']))
 
-    def gatherResults(self,file=None, folder = None):
+            with open('status.' + thisStat,'a') as f:
+                f.write(directory.split('/')[-1] + '  ')
+
+    def gatherResults(self,datafile=None, folder = None):
         from os import path
         from glob import glob
         from aBuild.database.dataset import dataset
-        if file is not None:
-            dataSet = dataset(file,self.species,lFormat = 'mlp',)
-            dataSet.writeReport('mlp')
+        from numpy import argsort
+
+        datafile = path.join(self.root,'fitting','mtp','relaxed_iteration_6.cfg')
+        if datafile is not None:
+            dataSet = dataset.from_file(datafile,self.species)
+            data.generateConvexHull(plot2D= False,plot3D=False,fileOutput = True)  # Find the convex hull
+            dataSet.findAllHullDistances()
+            dataSet.writeReport('mlptest')
         else:
-            trainingRoot = path.join(self.root, 'training_set')
+            trainingRoot = path.join(self.root, 'validation_set')
             with chdir(trainingRoot):
                 enumdirs = glob("E.*")
                 activedirs = glob("A.*")
                 pures = glob("pure*")
 
-            dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs + pures]
-            trainingSet = dataset(dirs,self.species,calculator = self.calculator["active"].upper())
+            dirs = [path.join(trainingRoot,x) for x in enumdirs + activedirs ]
+            numdirs = [int(y.split('.')[-1]) for y in dirs]
+            sorteddirs = [dirs[x] for x in argsort(numdirs)]
+            trainingSet = dataset.from_paths(sorteddirs,self.species,calculator = self.calculator["active"].upper())
             trainingSet.writeReport('vasp')
 
 
-    def generateConvexHull(self,file='dataReport_VASP.txt',plotAll = True):
+    def setupHullPredictions(self):
         from os import path
         from aBuild.database.dataset import dataset
-        dataFile = path.join(self.root,file)
-        if not path.isfile(dataFile):
-            msg.fatal('data file does not exist')
+        self.dataset = 'gss'
 
-        data = dataset(dataFile,self.species)
-        data.generateConvexHullPlot(plotAll = plotAll)
-            
+        dataFile = 'dataReport_mlp.txt'
+
+        data = dataset.from_file(dataFile,self.species,getCrystallographicInfo = True,eDicts = self.enumDicts,onlyCloseToHull = True)
+        validationRoot = path.join(self.root,'validation_set')
+        data.buildFolders(validationRoot,self.calculator,foldername='A')  # Submit VASP folders for close ones
+
+
     def errorsReport(self,datafile = None, predictFile = None):
         from aBuild.database.dataset import dataset
         from numpy.linalg import norm
         from numpy import average,array
-        
+
         dataSet = dataset(datafile,self.species,lFormat = 'mlp')
         predictSet = dataset(predictFile,self.species,lFormat = 'mlp')
 
@@ -303,20 +211,7 @@ class Controller(object):
         pyplot.hist(diffsForces,bins = 30)
         pyplot.savefig('errorPlot.png')
         #pyplot.savefig('errorForces.png')
-        
-        
 
-    def randomDisplacements(self,POSCAR):
-        from os import path
-        
-        from aBuild.database.crystal import Crystal
 
-        toRelax = path.join(self.root,'fitting','mtp','to_relax.cfg')
-        for i in range(1000):
-            thisCrystal = Crystal(POSCAR,systemSpecies = self.species)
-            thisCrystal.randomDisplace()
-            print(thisCrystal.lines('mtprelax'))
-            with open(toRelax, 'a+') as f:
-                f.writelines('\n'.join(thisCrystal.lines('mtprelax')))
-                
-        
+
+#    def validateGroundStates(self):

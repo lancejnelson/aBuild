@@ -33,60 +33,28 @@ class VASP:
         self.crystal = crystal
         self.directory = directory
         
-#       required = ["crystal","potcar","kpoints","incar","directory"]
-#        if True in [x not in  for x in required]:
-#            print([x not in args for x in required])
-#            msg.fatal("Information lacking to load VASP object")
-#        for spec in required:
-#            setattr(self,spec.upper(),specsDict[spec])
-#        print(self.POTCAR, 'HERE')
-        #        self.crystal = specsDict["crystal"]
-#        self.potcar = specsDict["potcar"]
-#        self.kpoints = specsDict["kpoints"]
-#        self.incar = specsDict["incar"]
-#        self.directory = specsDict["directory"]
-        #Initialize from a dictionary
-#        if isinstance(specs,dict):
-#
-#            # If specs is a dictionary, then we are using information from the yaml file to initialize
-#            # the class.  Crystalographic information has been added to the dictionary 
-#            if self._all_present(specs):
-#                self.POTCAR = POTCAR(specs["potcars"])
-#                self.KPOINTS = KPOINTS(specs["kpoints"])
-#                if isinstance(specs["crystal"],Crystal):
-#                    self.crystal = specs["crystal"]
-#                else:
-#                    self.crystal = Crystal(specs["crystal"],specs["species"])
-#                specs["incar"]["nAtoms"] = self.crystal.nAtoms
-#                self.INCAR = INCAR(specs["incar"])
-#            else:
-#                msg.fatal("I don't have all the necessary information to initialize: {}".format(specs.keys()))
-#        #Initialize from a path
-#        elif isinstance(specs, str):
-#            if systemSpecies == None:
-#                msg.fatal("When initializing a VASP object with a path, you need to supply the system's species list")
-#            self.directory = specs
-#            self.POTCAR = POTCAR(self.directory)
-#            self.KPOINTS = KPOINTS(self.directory)
-#            self.INCAR = INCAR(self.directory)
-#            self.crystal = Crystal(self.directory,systemSpecies,crystalSpecies = self.POTCAR.species)
-#            
-#        else:
-#            msg.fatal("Unable to initialize a VASP object from the data that you passed in:", specs)
-#        if directory is not None:
-#            self.directory = directory
-
-    def _all_present(self,specs):
-        required = ["incar","potcars","kpoints","crystal","species"]
-        for tag in required:
-            if tag not in specs.keys():
-                return False
-        return True
 
 
+    """
+    This method is typically used when initializing a VASP object from the information
+    in a YAML file.  So all of the calculation settings are stored in a dictionary. Note that
+    the run directory and the crystal object must be augmented to the dictionary since it typically
+    would not be something found in a YAML file.
+
+    Args:
+    specsDict(dict): Dictionary containing all of the calculation settings.  Must have entries for:
+
+                                 incar
+                                 potcar
+                                 kpoints
+                                 crystal
+    directory (str):  String specifying where the calculation will be run.
+    """
     @staticmethod
-    def from_dictionary(specsDict,directory):
+    def from_dictionary(specsDict):
         from aBuild.database.crystal import Crystal
+        specsDict["potcar"]["build"] = "manual"
+        specsDict["potcar"]["directory"] = None
         potcarobj = POTCAR(specsDict["potcar"])
         kpointsobj = KPOINTS(specsDict["kpoints"])
         if isinstance(specsDict["crystal"],Crystal):
@@ -96,8 +64,21 @@ class VASP:
             crystal = Crystal(specsDict["crystal"])
         specsDict["incar"]["nAtoms"] = crystal.nAtoms  #for ensuring MAGMOM tag is correct
         incarobj = INCAR(specsDict["incar"])
-        return VASP(incarobj,kpointsobj,potcarobj,crystal,directory)
+        return VASP(incarobj,kpointsobj,potcarobj,crystal,specsDict["directory"])
 
+
+
+    """
+    Method do initialize a VASP object from a directory.
+
+    Args:
+       
+       folderpath(str): string specifying the folder containing the calculation's input files
+       species(list):  List of strings containing species for the system under study.  This is an important
+                       piece of information since the specific calculation being initialized may have fewer species
+                       than the system under study.  We have to know the system species to stay consistent when building
+                       MTP input files.
+    """
     @staticmethod
     def from_path(folderpath,species):
         from aBuild.database.crystal import Crystal
@@ -106,50 +87,8 @@ class VASP:
         kpointsobj = KPOINTS.from_path(path.join(folderpath,'KPOINTS'))
         crystal = Crystal.from_path(path.join(folderpath,'POSCAR'),species)
         return VASP(incarobj,kpointsobj,potcarobj, crystal, folderpath)
+
             
-    # VASP does not like to have zeros in the atom_counts list
-    # but I want to keep track of which atoms are in the crystal.
-    # This routine is just here to remove any zeros before I write to
-    # the POSCAR file.
-    def check_atom_counts_zero(self):
-        from numpy import array,any
-        if any(self.crystal.atom_counts == 0):
-            from numpy import  where
-            idxKeep = list(where( self.crystal.atom_counts > 0)[0])
-            self.POTCAR.species = list(array(self.POTCAR.species)[idxKeep])
-            self.crystal.atom_counts = self.crystal.atom_counts[idxKeep]
-
-            self.crystal.crystalSpecies = self.POTCAR.species
-            print(self.crystal.crystalSpecies)
-    def _check_tag_exists(self,filename,tag):
-        from aBuild.utility import grep
-        #print('checking that {} tag exists in file {}'.format(tag,filename))
-        lines = grep(filename,tag)
-        if lines == []:
-#            print('Not found')
-            return False
-        else:
-#            print("Found!")
-            return True
-
-
-
-    def _check_file_exists(self,fileName):
-        files = os.listdir('./')
-        if fileName in files:
-            return True
-        else:
-            return False
-
-
-    def fileName(self,partName):
-        from glob import glob
-        files = sorted(glob(path.join(self.directory, partName) + '*') )
-        if files != []:
-            return files[-1].split()[-1]
-        else:
-            return None
-        
     def can_extract(self):
         from aBuild.utility import rgrep
 
@@ -167,7 +106,7 @@ class VASP:
         return outcars and busy
 
     def is_setup(self):
-        required = [path.join(self.directory,x) for x in [self.KPOINTS.filename, self.crystal.filename,self.POTCAR.filename, self.INCAR.filename]]
+        required = [path.join(self.directory,x) for x in ['KPOINTS', 'POSCAR','POTCAR', 'INCAR']]
         return False not in [path.isfile(x) for x in required]
 
     def error(self,searchfile,tag):
@@ -220,172 +159,24 @@ class VASP:
         elif self.is_setup():
             return 'not_started'
         
-#        if any([x is None for x in [self.potcarName, self.incarName,self.kpointsName,self.poscarName]]):
-#            return 'not setup'
-#        calcType = 'aflow' if True in ['aflow' in x for x in os.listdir(self.directory)] else 'vasp'
-#        with chdir(self.directory):
-##            if calcType == 'aflow':
-##                print("Looks like it's and aflow calc")
-##                if fileinDir('aflow.end.out','.'):
-##                    print("Looks like it's done")
-##                    return 'done'
-##            outcar = fileinDir('OUTCAR','.', or_close = True)
-#            outcarName = self.fileName('OUTCAR')
-#            vaspOutName = self.fileName('vasp.out')
-#            outcar = outcarName is not None
-#            incar = self.incarName is not None
-#            kpoints = self.kpointsName is not None
-#            potcar = self.potcarName is not None
-#            poscar = self.poscarName is not None
-#            #output = self.vaspOutName is not None
-#            #oszicar = self.oszicarName is not None
-#            #aflow = self.aflowinName is not None
-#            #aflowend = self.aflowendName is not None
-#            #if aflowend:
-#            #    return 'done'
-#            
-#
-##            inputs = incar and kpoints and potcar and poscar
-##            print(inputs,' inputs Found?')
-#            ''' Check to see if the input files are present
-#                if they aren't, no need to proceed, just return
-#                'not setup'
-#            '''
-#            
-# #           if not inputs:
-# #               print('inputs not found')
-# #               return 'not setup'
-#
-#            ''' If the OUTCAR file is present, we know that we're
-#            either running, finished successfully, or finished
-#            with errors!
-#            '''
-#            if outcar: # OUTCAR present
-#                ''' Check finish tag for static calc'''
-#                if incar:
-#                    relax = grep(self.incarName,'IBRION')
-#                    if '-1' not in relax or relax is []:
-#                            static = True
-#                    else:
-#                            static = False
-#                else:
-#                    return 'not setup'
-#
-#                finalenergyline = grep(outcarName,'free  energy')
-#
-#                if static and self._check_tag_exists(outcarName, fTagStatic):  #finish tag found
-#                    if finalenergyline != []:  #Let's double check
-#                        return 'done'
-#                    else:  # Apparently not,  why?
-#                        return 'idk'
-#                    
-#                    ''' Check finish tag for relax calc'''
-#                elif self._check_tag_exists(outcarName,fTagRelax): #Looks like it's done
-#                    if finalenergyline != []:  # Let's double check
-#                        return 'done'
-#                    else:  # Apparently not, why?
-#                        return 'idk'
-#                else:
-#                    sgrcon = grep(vaspOutName,'SGRCON')
-#                    tooclose = grep(vaspOutName,'HOPE')
-#                    generalerror = grep(vaspOutName,'ERROR')
-#                        
-#                    ''' Check how long since the last file write.  If it was recent
-#                     then we're probably running.'''
-#                    time = path.getmtime(outcarName)
-#                    if (ctime - time) < 3600:  # If the OUTCAR was modified in the last hour
-#                                              # the calculation is probably still running.
-#                        return 'running'
-#                    elif sgrcon:
-#                        return 'sgrcon'
-#                    elif generalerror:
-#                        return 'error'
-#                    elif tooclose:
-#                        return 'warning'
-#                    else:
-#                        return 'killed before done'
-#
-#                # Check to make sure I've converged electonically.
-#                if grep(self.oszicarName,'DAV:') != []:
-#              #      print(grep(self.oszicarName,'DAV:'), 'check here')
-#                    electronicIteration = int(grep(self.oszicarName,'DAV:')[-1].split()[1])
-#                else:
-#                    electronicIteration = 0
-#                if grep(self.incarName,'nsw') != []:
-#                    nsw = int(grep(self.incarName,'nsw')[0].split('=')[1])
-#                    if nsw == 0:
-#                        nsw = 1
-#                else:
-#                    nsw = 1
-#                if grep(self.oszicarName,'F=') != []:
-#                    ionicIteration = int(grep(self.oszicarName,'F=')[-1].split()[0])
-#                else:
-#                    ionicIteration = 1
-#                if grep(self.incarName,'nelm') != []:
-#                    maxelectronic = grep(self.incarName,'nelm')[0].split('=')[1]
-#                else:
-#                    maxelectronic = 60
-#                if ionicIteration == nsw and int(electronicIteration) == int(maxelectronic):
-#                    return 'unconverged'
-#                    
-#                ''' Let's first check to see if this is a static
-#                calculation or a relaxation because the tag 
-#                to check for is different.'''
-#                    
-#                    
-#            else:
-#                    return 'not started'
-#                    
-#                        
-#            if output:
-#                    warning = grep(vaspOutName,'RRRRR') != [] or grep(vaspOutName,'AAAAAA') != []
-#                    if warning:
-#                        return 'warning'
-#
-#
-#
-#                
-#        return folderstat
-    
-#    @staticmethod
-#    def from_path(runpath):
-#
-#        incar = INCAR.from_file(runpath)
-#        kpoint = KPOINTS.from_file(runpath)
-#        potcars = POTCARS.from_file(runpath)
-#        result = VASP(runpath = runpath,incar=incar,kpoints=kpoints,potcars=potcars)
-#        return result
 
     def buildFolder(self,runGetKPoints = True):
-        print(self.POTCAR.species, 'check here')
         from numpy import  where
         from aBuild.calculators.vasp import POSCAR
         self.crystal.write('POSCAR.orig',keepZeros = True)
-        print("POSCAR_orig built")
-        #self.check_atom_counts_zero()  # This routine modifies POTCAR.species and crystal.crystalSpecies. Bad idea...?
         self.crystal.write('POSCAR',keepZeros = False)
-        print("POSCAR built")
-        self.KPOINTS.rGP = runGetKPoints
         success = self.KPOINTS.writeKPOINTS()
         if not success:
             return False
-        print("KPOINTS built")
-        self.INCAR.writeINCAR()
-        print("INCAR built")
-        print(self.crystal.crystalSpecies,' species')
-        
+        self.INCAR.writeINCAR()        
         idxKeep = list(where( self.crystal.atom_counts > 0)[0])
-
         self.POTCAR.writePOTCAR(indices = idxKeep)
-        #print("POTCAR built")
         return True
         
 
     def read_forces(self,allIonic = True):
-        import lzma
-        openDict = {True: lzma.open(self.poscarName,'rt'), False: open(self.poscarName,'r')}
 
-        with openDict['xz' in self.poscarName] as f:
+        with open('POSCAR','r') as f:
             poslines = f.readlines()
                 
         if any(c.isalpha() for c in poslines[5].strip()):  #It's a CONTCAR
@@ -394,13 +185,8 @@ class VASP:
 
             nAtoms = sum([int(i) for i in poslines[5].split()])
 
-        if 'xz' in self.outcarName:
-            import lzma
-            with lzma.open(self.outcarName,'rt') as f:
-                lines = f.readlines()
-        else:
-            with open(self.outcarName, 'r') as f:
-                lines = f.readlines()
+        with open('OUTCAR', 'r') as f:
+            lines = f.readlines()
 
         n = 0
 
@@ -433,21 +219,19 @@ class VASP:
         
         return forces
 
-    def read_fermi(self):
+    def read_fermi(self,fileName):
         
         """Method that reads Fermi energy from OUTCAR file"""
         E_f = None
 
-        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
-        for line in openDict['xz' in self.outcarName]:
+        for line in open('OUTCAR','r'):
             if line.rfind('E-fermi') > -1:
                 E_f = float(line.split()[2])
         return E_f
                 
     def read_nbands(self):
         
-        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
-        for line in openDict['xz' in self.outcarName]:
+        for line in open('OUTCAR','r'):
             line = self.strip_warnings(line)
             if line.rfind('NBANDS') > -1:
                 nBands  = int(line.split()[-1])
@@ -461,8 +245,7 @@ class VASP:
             energyF = []
             energyZ = []
             
-        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
-        for line in openDict['xz' in self.outcarName]:
+        for line in open('OUTCAR','r'):
             # Free energy
             if line.lower().startswith('  free  energy   toten') or line.lower().startswith('  free energy    toten'):
                 if allElectronic:
@@ -481,19 +264,18 @@ class VASP:
     def read_stress(self):
         
         stress = None
-        openDict = {True: lzma.open(self.outcarName,'rt'), False: open(self.outcarName,'r')}
-        for line in openDict['xz' in self.outcarName]:
+        for line in open('OUTCAR','r'):
             if line.find(' Total    ') != -1:
                 try:
-                    stress = -np.array([float(a) for a in line.split()[1:]])
+                    stress = np.array([float(a) for a in line.split()[1:]])
                     stress = stress[[0, 1, 2, 4, 5, 3]] #* 1e-1 #* .00624151# * ase.units.GPa.. Gets me to Giga Pascals
                 except: 
                     msg.error("Unable to read stress from OUTCAR file")
                     stress = None
         return stress
 
-    def read_results(self, allElectronic = False, allIonic=False,mustHave = ['free energy','stress','species','formation energy']):
-        self.outcarName = self.fileName('OUTCAR')
+    def read_results(self, pures = None,allElectronic = False, allIonic=False,mustHave = ['free energy','stress','species','formation energy']):
+
         if self.directory is not None and self.status() == 'done':
             with chdir(self.directory):
                 self.crystal.results = {}
@@ -502,48 +284,30 @@ class VASP:
                 self.crystal.results["forces"] = self.read_forces(allIonic=allIonic)
                 self.crystal.results["stress"] = self.read_stress()
                 #self.POTCAR = POTCAR.from_POTCAR()
-                self.crystal.results["species"] = self.POTCAR.species
+        #        self.crystal.results["species"] = self.POTCAR.species
                 self.crystal.results["energypatom"] = self.crystal.results["energyF"]/self.crystal.nAtoms
-                if abs(self.crystal.results["energyF"]) > 1000:
-                    self.crystal.results["warning"] = True
-                if 'pure' not in self.directory:
-                    self.crystal.results["fEnth"] = self.formationEnergy
-                else:
+                if 'pure' in self.directory:
                     self.crystal.results["fEnth"] = 0
+                elif pures is not None:
+                    self.crystal.results["fEnth"] = self.formationEnergy(pures)
+                else:
+                    self.crystal.results["fEnth"] = 1000
                 msg.info("Succesfully read in results")
         else:
-            self.crystal.results = None
-            msg.info("Unable to extract necessary information from directory! ({}).  Status: {} ".format(self.directory,self.status))
+            if self.crystal is not None:
+                self.crystal.results = None
+            msg.info("Unable to extract necessary information from directory! ({}).  Status: {} ".format(self.directory,self.status()))
             
-    def add_to_results(self,key,item):
-        if self.crystal.results is None:
-            self.crystal.results = {}
-        self.crystal.results[key] = item
-
     @property
-    def formationEnergy(self):
+    def formationEnergy(self,pures):
         from os import path
-        pures = []
-        for i in range(self.crystal.nTypes):
-            pureDir = path.join(path.split(self.directory)[0], 'pure' + self.crystal.systemSpecies[i])
-            if path.isdir(pureDir):
-                pureVASP = VASP(pureDir,systemSpecies = self.crystal.systemSpecies)
-                pureVASP.read_results()
-                pures.append(pureVASP)
-            else:
-                msg.warn("Unable to read pures information, not calculating formation energy")
-                return None
-
-        try:
-            formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
-        except:
-            formationEnergy = 10000
+        formationEnergy = self.crystal.results["energyF"]/self.crystal.nAtoms - sum(   [ pures[i].crystal.results["energyF"]/pures[i].crystal.nAtoms * self.crystal.concentrations[i] for i in range(self.crystal.nTypes)])
         return formationEnergy
         
 class POTCAR:
 
-    def __init__(self,specsDict,fileName = None):
-        required = ["directory","xc","versions","setups","build"]
+    def __init__(self,specsDict):
+        required = ["directory","xc","versions","setups","build","srcdirectory"]
         if True in [x not in specsDict.keys() for x in required]:
             print([x not in specsDict.keys() for x in required])
             msg.fatal("Missing information on initializing POTCAR")
@@ -558,40 +322,6 @@ class POTCAR:
             msg.fatal('Species are not in reverse alphabetical order... Problem?')
             
 
-#        if isinstance(specs,dict):
-#            print('initializing on a dictionary')
-#            self.srcdirectory = specs["directory"]
-#            self.xc = specs["xc"]
-#            self.versions = specs["versions"]
-#            self.species = list(specs["versions"].keys())
-#            self.species.sort(reverse=True)
-#            if sorted(self.species,reverse = True) != self.species:
-#                msg.fatal('Species are not in reverse alphabetical order... Problem?')
-#            self.setups = specs["setups"]
-#            if 'build' in specs:
-#                self.build = specs["build"]
-#            else:
-#                self.build = 'manual'
-#        elif isinstance(specs,str):
-#            self.directory = specs
-#            if fileName is not None:
-#                self.name = fileName
-#            self._init_path()
-
-
-
-    @property
-    def filename(self):
-        if hasattr(self,'name'):
-            return self.name
-        else:
-            return 'POTCAR'
-        from glob import glob
-        files = sorted(glob(path.join(self.directory, 'POTCAR') + '*') )
-        if files != []:
-            return files[-1].split()[-1]
-        else:
-            return None
         
     @staticmethod
     def from_path(filepath):
@@ -599,16 +329,11 @@ class POTCAR:
         from os import path
         if not path.isfile(filepath):
             return None
-#        msg.fatal("File {} not found".format(filepath))
-        if 'xz' in filepath:
-            import lzma
-            with lzma.open(filepath,'rt') as f:
-                lines = f.readlines()
-        else:
-            with open(filepath,'r') as f:
-                lines = f.readlines()
+
+        openDict = {True: lzma.open(filepath,'rt'), False: open(filepath,'r')}
+        with openDict['xz' in filepath] as f:
+            lines = f.readlines()
             
-                #        species = []
         setups = {}
         versions = {}
         xc = []
@@ -623,7 +348,7 @@ class POTCAR:
                 xc.append(line.split()[2])
 
         required = ["directory","xc","versions","setups","build"]
-        specs = {"directory":path.split(filepath)[0], "xc":xc, "versions": versions, "setups":setups, "build": None}
+        specs = {"directory":path.split(filepath)[0], "xc":xc, "versions": versions, "setups":setups, "build": None,"srcdirectory": None}
         return POTCAR(specs)
         
 
@@ -672,6 +397,8 @@ class INCAR:
 
 
     def __init__(self,specsDict):
+
+#        required = [""]
         self.tags = specsDict
 
 
@@ -679,13 +406,10 @@ class INCAR:
     def from_path(filepath):
         if not path.isfile(filepath):
             return None
-        if 'xz' in filepath:
-            import lzma
-            with lzma.open(filepath,'rt') as f:
-                lines = f.readlines()
-        else:
-            with open(filepath,'r') as f:
-                lines = f.readlines()
+
+        openDict = {True: lzma.open(filepath,'rt'), False: open(filepath,'r')}
+        with openDict['xz' in filepath] as f:
+            lines = f.readlines()
         tags = {}
 
         for line in lines:
@@ -696,18 +420,6 @@ class INCAR:
 
         return INCAR(tags)
 
-    @property
-    def filename(self):
-        if hasattr(self,'name'):
-            return self.name
-        else:
-            return 'INCAR'
-        from glob import glob
-        files = sorted(glob(path.join(self.directory, 'INCAR') + '*') )
-        if files != []:
-            return files[-1].split()[-1]
-        else:
-            return None
         
     @staticmethod
     def from_defaults():
@@ -745,33 +457,21 @@ class INCAR:
 class KPOINTS:
 
     def __init__(self,specsDict):
-
+        required = ["method"]
         self.specs = specsDict
 
-#        if isinstance(specs,dict):
-#            self.specs = specs
-#            #self.method = specs["method"]
-#            #self.density = specs["mindistance"]
-#            #self.includeGamma = True
-#        elif isinstance(specs,str):
-#            self.directory = specs
-#            if fileName is not None:
-#                self.name = fileName
-#            self._init_file()
-            
-
-    @property
-    def filename(self):
-        if hasattr(self,'name'):
-            return self.name
-        else:
-            return 'KPOINTS'
-        from glob import glob
-        files = sorted(glob(path.join(self.directory, 'KPOINTS') + '*') )
-        if files != []:
-            return files[-1].split()[-1]
-        else:
-            return None
+  #   @property
+ #   def filename(self):
+ #       if hasattr(self,'name'):
+ #           return self.name
+ #       else:
+ #           return 'KPOINTS'
+ #       from glob import glob
+ #       files = sorted(glob(path.join(self.directory, 'KPOINTS') + '*') )
+ #       if files != []:
+ #           return files[-1].split()[-1]
+ #       else:
+ #           return None
 
     @staticmethod
     def from_path(folder):
@@ -782,14 +482,10 @@ class KPOINTS:
         if True in [len(x) > 1 for x in [kpgen,precalc]]:
             msg.error("Why are there two KPOINTs input files")
         if len(kpgen) > 0:
-            print(kpgen)
-            print('autogr')
             specs["method"] = "autogr"
         elif len(precalc) > 0:
-            print('mueller')
             specs["method"] = "mueller"
         else:
-            print('made it here')
             return None
 #            msg.error("Cannot determine KPOINTS method")
         print(precalc, kpgen)
@@ -805,18 +501,8 @@ class KPOINTS:
             specs[line.split('=')[0].lower()] = line.split('=')[1]
 
         return KPOINTS(specs)
-#        if 'Server' in lines[0].split():
-#            densityLocation = lines[0].split().index('Angstroms.') - 1
-#            density = float(lines[0].split()[densityLocation])
-#            if 'Grid includes gamma point' in lines[0]:
-#                self.includeGamma = True
-#            else:
-#                self.includeGamma = False
-#                #elif 'Automatically generated mesh' in lines[0]:
-#                #self.method = 'MP'
-#            
-#            #            self.
-    def writeKPOINTS(self,filename='KPOINTS'):
+
+    def writeKPOINTS(self,execute=True):
         
         methodlookup = {'mueller': self.mueller,'equivalent': self.equivalent, "mp": self.monkPack,"autogr": self.autogr}
         print(self.specs["method"],' check here')
@@ -824,10 +510,10 @@ class KPOINTS:
         if self.specs["method"] not in ['mueller','equivalent','mp','autogr']:
             msg.error("I don't recognize the method you have specified: {}".format(self.specs["method"]))
             
-        return methodlookup[self.specs["method"]](filename = filename)
+        return methodlookup[self.specs["method"]](execute=execute)
 
 
-    def autogr(self,filename='KPOINTS'):
+    def autogr(self,execute=True):
         from os import waitpid,path
         from subprocess import Popen
         self.KPGEN()
@@ -835,7 +521,7 @@ class KPOINTS:
 
         if config.AUTOGR is not None:
             print('Found AUTOGR executable')
-            if self.rGP:
+            if execute:
                 command = "{}".format(config.AUTOGR)
                 child=Popen(command, shell=True, executable="/bin/bash")
                 waitpid(child.pid, 0)
@@ -860,7 +546,7 @@ class KPOINTS:
                 return True
 
 
-    def mueller(self,filename='KPOINTS',runGetKpoints = False):
+    def mueller(self,execute=True):
         from os import waitpid,path
         from subprocess import Popen
 
@@ -869,7 +555,7 @@ class KPOINTS:
 
         if config.GETKPTS is not None:
             print('Found GETKPTS executable')
-            if self.rGP:
+            if execute:
                 command = "{}".format(config.GETKPTS)
                 child=Popen(command, shell=True, executable="/bin/bash")
                 waitpid(child.pid, 0)
@@ -949,8 +635,6 @@ class POSCAR(object):
 
         required = ['label','Lv','latpar','Bv','coordsys','species','atom_counts']
         if True in [x not in crystal.keys() for x in required]:
-            print(crystal)
-            print([x not in crystal.keys() for x in required])
             msg.fatal("You are lacking necessary information to initialize a POSCAR object")
         for spec in required:
             setattr(self,spec,crystal[spec])
@@ -1063,7 +747,6 @@ class POSCAR(object):
         # Figure out which one we have
 
         if any(c.isalpha() for c in poscarlines[5].strip()):  #Updated styling for
-            print('new styling')
             countsLine = 6
             coordSysLine = 7
             basisStartLine = 8
@@ -1075,7 +758,6 @@ class POSCAR(object):
             poscarDict["species"] = poscarlines[5].split()
             
         else: #It's the older styling
-            print('older styling')
             countsLine = 5
             coordSysLine = 6
             basisStartLine = 7
